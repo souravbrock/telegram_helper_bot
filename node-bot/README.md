@@ -1,10 +1,29 @@
-# Node.js bot (cPanel deploy target — `tbot.reddevils.co.in`)
+# Node.js bot (deploy targets: Render + `tbot.reddevils.co.in`)
 
-Python `app/` can't run here (no Setup Python App on this plan), so this
-`node-bot/` is the production deploy: same MVP (moderation, captcha, welcome,
-admin commands, Mini-App API), JSON storage (no native modules).
+Python `app/` can't run on the current cPanel plan (no Setup Python App), so
+this `node-bot/` is the production deploy: same MVP (moderation, captcha,
+welcome, admin commands, Mini-App API), JSON storage (no native modules).
 
-## Deploy to domainadda cPanel (Setup Node.js App)
+`app.js` runs bot polling + Express API in one process, so it fits a single
+Render free web service (no separate worker needed).
+
+## Deploy to Render (free, current path)
+
+1. Push to GitHub (done: `main`), then **render.com → New → Web Service →
+   Build from GitHub** → pick `souravbrock/telegram_helper_bot`.
+   Render auto-detects `render.yaml` (rootDir `node-bot`, health check `/health`).
+2. Environment → add secrets: `BOT_TOKEN` (use the **revoked/re-issued** token,
+   never the one from the screenshots), `ADMIN_IDS`, `LOG_CHANNEL_ID`.
+   Defaults for the rest are in `render.yaml`.
+3. Create → wait for **Live** → open `https://<your-app>.onrender.com/health`
+   → `{"ok":true,...}`.
+4. Free-tier sleeps: add a free **UptimeRobot** monitor hitting `/health` every
+   5 min to keep the polling bot alive. (Mini-App dashboard lives at `/miniapp`
+   on the same URL until cPanel Passenger is fixed.)
+5. Telegram test: `/start`, add bot to a test group as admin (delete + restrict
+   rights), send a spam link → warn flow; new-member captcha on join.
+
+## Deploy to domainadda cPanel (blocked: host Passenger 500s, ticket open)
 
 You confirmed: subdomain `tbot.reddevils.co.in` → `/public_html/tbot` exists,
 empty, and Setup Node.js App opens.

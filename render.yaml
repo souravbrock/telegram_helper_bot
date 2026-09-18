@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: telegram-helper-bot
+    runtime: node
+    rootDir: node-bot
+    buildCommand: npm install
+    startCommand: node app.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_PORT
+        value: 3000
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: LOG_CHANNEL_ID
+        sync: false
+      - key: WARN_LIMIT
+        value: 3
+      - key: FLOOD_LIMIT
+        value: 5
+      - key: FLOOD_WINDOW_SEC
+        value: 10
+      - key: CAPTCHA_TIMEOUT_SEC
+        value: 90
+      - key: ALLOW_LINKS
+        value: false
+      - key: WHITELIST_DOMAINS
+        value: t.me,telegram.me
