@@ -8,10 +8,16 @@ env/
 
 # Env
 .env
+node-bot/.env
 
 # DB
 *.db
 *.sqlite3
+node-bot/data.json
+node-bot/test-data.json
+
+# Node
+node_modules/
 
 # OS
 .DS_Store

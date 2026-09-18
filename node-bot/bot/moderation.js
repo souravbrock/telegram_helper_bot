@@ -1,0 +1,91 @@
+'use strict';
+/* Auto-moderation: delete spam, warn -> mute -> kick -> ban. */
+const antispam = require('../lib/antispam');
+const store = require('../lib/store');
+const { record } = require('../lib/modlog');
+
+function env() {
+  const csv = (v) => new Set((v || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+  return {
+    warnLimit: parseInt(process.env.WARN_LIMIT || '3', 10),
+    floodLimit: parseInt(process.env.FLOOD_LIMIT || '5', 10),
+    floodWindow: parseInt(process.env.FLOOD_WINDOW_SEC || '10', 10),
+    allowLinks: (process.env.ALLOW_LINKS || 'false') === 'true',
+    whitelist: csv(process.env.WHITELIST_DOMAINS),
+    blacklist: csv(process.env.BLACKLIST_WORDS),
+  };
+}
+
+async function isAdmin(ctx) {
+  try {
+    const m = await ctx.getChatMember(ctx.from.id);
+    return m.status === 'administrator' || m.status === 'creator';
+  } catch {
+    return false;
+  }
+}
+
+function register(bot) {
+  bot.on('message:text', async (ctx, next) => {
+    try {
+      const chatType = ctx.chat?.type;
+      if (chatType !== 'group' && chatType !== 'supergroup') return next();
+      if (!ctx.from || ctx.from.is_bot) return;
+      if (await isAdmin(ctx)) return next();
+
+      const e = env();
+      const text = ctx.msg.text || ctx.msg.caption || '';
+      const entities = [...(ctx.msg.entities || []), ...(ctx.msg.caption_entities || [])];
+      const hasUrl = entities.some((x) => x.type === 'url' || x.type === 'text_link');
+      const isFwd = Boolean(ctx.msg.forward_date || ctx.msg.forward_from_chat || ctx.msg.forward_origin);
+
+      const chatCfg = store.getChat(ctx.chat.id, { warnLimit: e.warnLimit, allowLinks: e.allowLinks });
+      const verdict = antispam.check({
+        chatId: ctx.chat.id, userId: ctx.from.id, text,
+        hasUrlEntity: hasUrl, isForward: isFwd,
+        allowLinks: Boolean(chatCfg.allow_links) || e.allowLinks,
+        whitelist: e.whitelist, blacklist: e.blacklist,
+        floodLimit: e.floodLimit, floodWindow: e.floodWindow,
+      });
+      if (!verdict.isSpam) return next();
+
+      const reason = verdict.reasons.join('; ');
+      try { await ctx.deleteMessage(); } catch (err) { console.warn('delete failed:', err.message); }
+
+      const count = store.addWarning(ctx.chat.id, ctx.from.id);
+      const limit = parseInt(chatCfg.warn_limit || e.warnLimit, 10);
+      const mention = `<a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>`;
+
+      if (count >= limit * 2) {
+        try {
+          await ctx.banChatMember(ctx.from.id);
+          await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: 'BAN', reason: `${reason} (${count} warns)`, chatTitle: ctx.chat.title });
+          await ctx.reply(`⛔️ ${mention}: BANNED — ${reason}`, { parse_mode: 'HTML' });
+        } catch (err) { console.warn('ban failed:', err.message); }
+        store.resetWarnings(ctx.chat.id, ctx.from.id);
+      } else if (count >= limit + 1) {
+        try {
+          await ctx.banChatMember(ctx.from.id);
+          await ctx.unbanChatMember(ctx.from.id);
+          await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: 'KICK', reason: `${reason} (${count} warns)`, chatTitle: ctx.chat.title });
+          await ctx.reply(`👢 ${mention}: KICKED — ${reason}`, { parse_mode: 'HTML' });
+        } catch (err) { console.warn('kick failed:', err.message); }
+        store.resetWarnings(ctx.chat.id, ctx.from.id);
+      } else if (count >= limit) {
+        try {
+          await ctx.restrictChatMember(ctx.from.id, { can_send_messages: false }, { until_date: Math.floor(Date.now() / 1000) + 3600 });
+          await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: `MUTE 1h (${count} warns)`, reason, chatTitle: ctx.chat.title });
+          await ctx.reply(`🔇 ${mention} muted 1h (${count}/${limit})`, { parse_mode: 'HTML' });
+        } catch (err) { console.warn('mute failed:', err.message); }
+        store.resetWarnings(ctx.chat.id, ctx.from.id);
+      } else {
+        await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: `WARN ${count}/${limit}`, reason, chatTitle: ctx.chat.title });
+        await ctx.reply(`⚠️ ${mention} warned (${count}/${limit}): ${reason}`, { parse_mode: 'HTML' });
+      }
+    } catch (err) {
+      console.error('moderation error:', err);
+    }
+  });
+}
+
+module.exports = { register };
