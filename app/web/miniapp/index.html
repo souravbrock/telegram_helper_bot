@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Group Assistant — Admin Dashboard (MVP)</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
+.card{border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0}
+button{padding:8px 12px;border-radius:8px;border:1px solid #888;background:#f5f5f5;cursor:pointer}
+input,textarea{width:100%;padding:8px;margin:4px 0;border-radius:8px;border:1px solid #bbb}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{border-bottom:1px solid #eee;padding:6px;text-align:left}
+</style>
+</head>
+<body>
+<h2>🛡 Group Assistant — MVP Dashboard</h2>
+<p>Open this page via the bot's Mini App button. API: <code>/api/stats</code> <code>/api/logs</code></p>
+<div class="card">
+<h3>Stats</h3>
+<button onclick="loadStats()">Reload stats</button>
+<pre id="stats">—</pre>
+</div>
+<div class="card">
+<h3>Recent moderation logs</h3>
+<button onclick="loadLogs()">Reload logs</button>
+<table><thead><tr><th>ts</th><th>chat</th><th>user</th><th>action</th><th>reason</th></tr></thead>
+<tbody id="logs"></tbody></table>
+</div>
+<div class="card">
+<h3>Chat settings</h3>
+<input id="chatId" placeholder="chat id e.g. -100123..." />
+<button onclick="loadSettings()">Load</button>
+<textarea id="welcome" rows="3" placeholder="welcome text"></textarea>
+<button onclick="saveSettings()">Save welcome</button>
+<pre id="settings">—</pre>
+</div>
+<script>
+async function j(u,o){const r=await fetch(u,o);return r.json();}
+async function loadStats(){document.getElementById('stats').textContent=JSON.stringify(await j('/api/stats'),null,2);}
+async function loadLogs(){
+  const d=await j('/api/logs?limit=30');
+  document.getElementById('logs').innerHTML=(d.items||[]).map(x=>
+    `<tr><td>${x.ts}</td><td>${x.chat_id}</td><td>${x.user_id}</td><td>${x.action}</td><td>${x.reason||''}</td></tr>`).join('');
+}
+async function loadSettings(){
+  const id=document.getElementById('chatId').value.trim();
+  if(!id) return alert('enter chat id');
+  const s=await j('/api/settings/'+encodeURIComponent(id));
+  document.getElementById('settings').textContent=JSON.stringify(s,null,2);
+  document.getElementById('welcome').value=s.welcome_text||'';
+}
+async function saveSettings(){
+  const id=document.getElementById('chatId').value.trim();
+  const w=document.getElementById('welcome').value;
+  const s=await j('/api/settings/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({welcome_text:w})});
+  document.getElementById('settings').textContent=JSON.stringify(s,null,2);
+}
+Telegram.WebApp.ready();
+loadStats(); loadLogs();
+</script>
+</body>
+</html>
