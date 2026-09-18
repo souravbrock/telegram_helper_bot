@@ -51,13 +51,46 @@ function quizKeyboard(chatId, userId, correct) {
 async function cleanupPending(bot, chatId, userId) {
   const k = `${chatId}:${userId}`;
   const p = pending.get(k);
-  if (!p) return;
-  clearTimeout(p.timer);
-  pending.delete(k);
-  try { await bot.api.deleteMessage(chatId, p.buttonId); } catch {}
+  if (p) {
+    clearTimeout(p.timer);
+    pending.delete(k);
+  }
+  store.dropPending(chatId, userId);
+  try { await bot.api.deleteMessage(chatId, p ? p.buttonId : (await findButton(chatId, userId))); } catch {}
+}
+
+async function findButton(chatId, userId) {
+  const hit = store.listPending().find((x) => x.chatId === chatId && x.userId === userId);
+  return hit ? hit.buttonId : undefined;
+}
+
+// Sweep every minute: expiry survives restarts (Render sleeps wipe in-memory timers).
+async function expireOne(bot, chatId, userId, buttonId) {
+  store.dropPending(chatId, userId);
+  try { await bot.api.deleteMessage(chatId, buttonId); } catch {}
+  try {
+    const m = await bot.api.getChatMember(chatId, userId);
+    if (m.status === 'restricted' && m.can_send_messages === false) {
+      await bot.api.banChatMember(chatId, userId);
+      await bot.api.unbanChatMember(chatId, userId);
+      await record(bot, { chatId, userId, action: 'KICK', reason: 'captcha timeout' });
+    }
+  } catch (e) { console.warn('captcha sweep:', e.message); }
+}
+
+function startSweep(bot) {
+  setInterval(async () => {
+    try {
+      const now = Date.now();
+      for (const p of store.listPending()) {
+        if (p.deadline <= now) await expireOne(bot, p.chatId, p.userId, p.buttonId);
+      }
+    } catch (e) { console.warn('sweep error:', e.message); }
+  }, 60 * 1000).unref?.();
 }
 
 function register(bot) {
+  startSweep(bot);
   // Exit traces vanish immediately.
   bot.on('message:left_chat_member', async (ctx) => {
     try { await ctx.deleteMessage(); } catch (e) { console.warn('delete leave-msg failed:', e.message); }
@@ -100,19 +133,13 @@ function register(bot) {
           clearTimeout(pending.get(k).timer);
           pending.delete(k);
         }
+        store.savePending(ctx.chat.id, user.id, btn.message_id, Date.now() + timeout * 1000);
+        // Belt-and-braces: button message can never outlive the timeout,
+        // even if the kick path below throws before reaching its own delete.
+        autodelete(bot.api, ctx.chat.id, btn.message_id, timeout + 5);
         const timer = setTimeout(async () => {
           pending.delete(k);
-          try { await bot.api.deleteMessage(ctx.chat.id, btn.message_id); } catch {}
-          try {
-            const m = await bot.api.getChatMember(ctx.chat.id, user.id);
-            if (m.status === 'restricted' && m.can_send_messages === false) {
-              await bot.api.banChatMember(ctx.chat.id, user.id);
-              await bot.api.unbanChatMember(ctx.chat.id, user.id);
-              const gone = await bot.api.sendMessage(ctx.chat.id, `⏰ Unverified user removed (timeout).`, { parse_mode: 'HTML' });
-              autodelete(bot.api, ctx.chat.id, gone.message_id, verifiedTtl());
-              await record(bot, { chatId: ctx.chat.id, userId: user.id, action: 'KICK', reason: 'captcha timeout', chatTitle: ctx.chat.title });
-            }
-          } catch (e) { console.warn('captcha timeout:', e.message); }
+          await expireOne(bot, ctx.chat.id, user.id, btn.message_id);
         }, timeout * 1000);
         pending.set(k, { timer, buttonId: btn.message_id });
       }

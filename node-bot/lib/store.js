@@ -17,9 +17,10 @@ function load() {
     d.warnings = d.warnings || {};
     d.actions = d.actions || [];
     d.chats = d.chats || {};
+    d.pending = d.pending || {}; // "chat:user" -> { buttonId, deadline }
     return d;
   } catch {
-    return { warnings: {}, actions: [], chats: {} };
+    return { warnings: {}, actions: [], chats: {} , pending: {} };
   }
 }
 
@@ -94,7 +95,28 @@ function saveChat(chatId, patch, defaults) {
   return d.chats[String(chatId)];
 }
 
+function savePending(chatId, userId, buttonId, deadline) {
+  const d = load();
+  d.pending[key(chatId, userId)] = { buttonId, deadline };
+  save(d);
+}
+
+function dropPending(chatId, userId) {
+  const d = load();
+  delete d.pending[key(chatId, userId)];
+  save(d);
+}
+
+function listPending() {
+  const d = load();
+  return Object.entries(d.pending).map(([k, v]) => {
+    const [chatId, userId] = k.split(':').map(Number);
+    return { chatId, userId, buttonId: v.buttonId, deadline: v.deadline };
+  });
+}
+
 module.exports = {
   getWarnings, addWarning, resetWarnings, logAction,
   recentActions, actionCounts, getChat, saveChat,
+  savePending, dropPending, listPending,
 };
