@@ -20,6 +20,21 @@ function adminIds() {
   return new Set((process.env.ADMIN_IDS || '').split(',').map((s) => s.trim()).filter(Boolean).map(Number));
 }
 
+const URL_RE_PUBLIC = /(https?:\/\/\S+|t\.me\/\S+|telegram\.me\/\S+)/gi;
+const BARE_DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi;
+
+/* Public replies must never re-publish the removed URL/domain.
+ * Full reason stays in DB + admin log channel via record(). */
+function publicReason(reason) {
+  return (reason || '')
+    .replace(URL_RE_PUBLIC, '[link removed]')
+    .replace(BARE_DOMAIN_RE, '[link removed]')
+    .replace(/\s*:\s*\[link removed\]/, '')
+    .trim()
+    .replace(/[:\s,;]+$/, '')
+    .trim() || 'rule violation';
+}
+
 async function isAdmin(ctx) {
   if (ctx.from && adminIds().has(ctx.from.id)) return true; // bot admin bypass
   try {
@@ -56,6 +71,7 @@ function register(bot) {
       if (!verdict.isSpam) return next();
 
       const reason = verdict.reasons.join('; ');
+      const pub = publicReason(reason); // never re-publish the removed URL
       try { await ctx.deleteMessage(); } catch (err) { console.warn('delete failed:', err.message); }
 
       const count = store.addWarning(ctx.chat.id, ctx.from.id);
@@ -66,7 +82,7 @@ function register(bot) {
         try {
           await ctx.banChatMember(ctx.from.id);
           await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: 'BAN', reason: `${reason} (${count} warns)`, chatTitle: ctx.chat.title });
-          await ctx.reply(`⛔️ ${mention}: BANNED — ${reason}`, { parse_mode: 'HTML' });
+          await ctx.reply(`⛔️ ${mention}: BANNED — ${pub}`, { parse_mode: 'HTML' });
         } catch (err) { console.warn('ban failed:', err.message); }
         store.resetWarnings(ctx.chat.id, ctx.from.id);
       } else if (count >= limit + 1) {
@@ -74,7 +90,7 @@ function register(bot) {
           await ctx.banChatMember(ctx.from.id);
           await ctx.unbanChatMember(ctx.from.id);
           await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: 'KICK', reason: `${reason} (${count} warns)`, chatTitle: ctx.chat.title });
-          await ctx.reply(`👢 ${mention}: KICKED — ${reason}`, { parse_mode: 'HTML' });
+          await ctx.reply(`👢 ${mention}: KICKED — ${pub}`, { parse_mode: 'HTML' });
         } catch (err) { console.warn('kick failed:', err.message); }
         store.resetWarnings(ctx.chat.id, ctx.from.id);
       } else if (count >= limit) {
@@ -86,7 +102,7 @@ function register(bot) {
         store.resetWarnings(ctx.chat.id, ctx.from.id);
       } else {
         await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: `WARN ${count}/${limit}`, reason, chatTitle: ctx.chat.title });
-        await ctx.reply(`⚠️ ${mention} warned (${count}/${limit}): ${reason}`, { parse_mode: 'HTML' });
+        await ctx.reply(`⚠️ ${mention} warned (${count}/${limit}): ${pub}`, { parse_mode: 'HTML' });
       }
     } catch (err) {
       console.error('moderation error:', err);
