@@ -15,6 +15,8 @@ node-bot/.env
 *.sqlite3
 node-bot/data.json
 node-bot/test-data.json
+node-bot/lib/test-data.json
+node-bot/lib/data.json
 
 # Node
 node_modules/
