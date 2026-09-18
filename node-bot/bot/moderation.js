@@ -16,17 +16,23 @@ function env() {
   };
 }
 
+function adminIds() {
+  return new Set((process.env.ADMIN_IDS || '').split(',').map((s) => s.trim()).filter(Boolean).map(Number));
+}
+
 async function isAdmin(ctx) {
+  if (ctx.from && adminIds().has(ctx.from.id)) return true; // bot admin bypass
   try {
     const m = await ctx.getChatMember(ctx.from.id);
-    return m.status === 'administrator' || m.status === 'creator';
+    return m.status === 'administrator' || m.status === 'creator'; // group owner + admins bypass
   } catch {
     return false;
   }
 }
 
 function register(bot) {
-  bot.on('message:text', async (ctx, next) => {
+  // 'message' (not just text): also catches photo/video/file captions holding URLs.
+  bot.on('message', async (ctx, next) => {
     try {
       const chatType = ctx.chat?.type;
       if (chatType !== 'group' && chatType !== 'supergroup') return next();
