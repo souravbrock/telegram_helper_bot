@@ -16,6 +16,7 @@ const store = require('./lib/store');
 const moderation = require('./bot/moderation');
 const captcha = require('./bot/captcha');
 const admin = require('./bot/admin');
+const menu = require('./bot/menu');
 const scheduler = require('./bot/scheduler');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
@@ -58,6 +59,7 @@ if (TOKEN) {
   bot = new Bot(TOKEN);
   bot.catch((err) => console.error('bot error:', err));
   admin.register(bot);
+  menu.register(bot);
   captcha.register(bot);
   moderation.register(bot);
   scheduler.register(bot);

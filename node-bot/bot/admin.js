@@ -36,6 +36,7 @@ function register(bot) {
     '🤖 <b>Group Assistant (Node MVP)</b>\n\n' +
     'Auto-moderation: spam links/forwards/flood deleted, warn→mute→kick→ban.\n' +
     'Captcha verification for new members.\n\n' +
+    'Tip: /menu opens the button control panel.\n\n' +
     '<b>Admin</b>\n/warn (reply) • /unwarn • /warns\n/mute 10m (reply) • /unmute\n/kick • /ban • /unban user_id\n' +
     '/setwelcome text • /poll Q?; A; B • /stats\n\n' +
     '<b>Filters</b>\n/addbanword w1,w2 • /rmbanword w • /banwords\n' +
