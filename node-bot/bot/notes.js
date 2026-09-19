@@ -230,13 +230,19 @@ function register(bot) {
   });
 
   // ---------- Menu integration (delete + wipe prompts; _yes/_no handled below) ----------
+  // Works in groups and in DM connections (chat resolved via connection).
   bot.callbackQuery(/^menu:(note_del:|filter_del:|notes_wipe$|filters_wipe$|notes_back$|filters_back$)/, async (ctx) => {
     try {
-      if (!(await isAdmin(ctx))) {
+      let chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id;
+      if (ctx.chat?.type === 'private') chatId = store.getConnection(ctx.from.id);
+      if (!chatId) {
+        await ctx.answerCallbackQuery({ text: 'Connect a group first: /start → My Groups.', show_alert: true });
+        return;
+      }
+      if (!(await isAdminIn(bot, chatId, ctx.from.id))) {
         await ctx.answerCallbackQuery({ text: 'Admins only.', show_alert: true });
         return;
       }
-      const chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id;
       const data = ctx.callbackQuery.data || '';
       const answer = (t) => ctx.answerCallbackQuery({ text: t }).catch(() => {});
 
@@ -271,11 +277,16 @@ function register(bot) {
   // Plain-message confirms for /clearall and /stopall
   bot.callbackQuery(['menu:notes_wipe_yes', 'menu:notes_wipe_no', 'menu:filters_wipe_yes', 'menu:filters_wipe_no'], async (ctx) => {
     try {
-      if (!(await isAdmin(ctx))) {
+      let chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id;
+      if (ctx.chat?.type === 'private') chatId = store.getConnection(ctx.from.id);
+      if (!chatId) {
+        await ctx.answerCallbackQuery({ text: 'Connect a group first.', show_alert: true });
+        return;
+      }
+      if (!(await isAdminIn(bot, chatId, ctx.from.id))) {
         await ctx.answerCallbackQuery({ text: 'Admins only.', show_alert: true });
         return;
       }
-      const chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id;
       const data = ctx.callbackQuery.data;
       if (data === 'menu:notes_wipe_yes') {
         const n = store.clearNotes(chatId);

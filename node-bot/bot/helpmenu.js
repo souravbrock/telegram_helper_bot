@@ -39,7 +39,7 @@ function gridKb() {
     if (i % 3 === 2) kb.row();
   });
   if (keys.length % 3 !== 0) kb.row();
-  kb.text('⏳ Roadmap', 'help:ROADMAP').row();
+  kb.text('🔗 My Groups', 'conn:list').text('⏳ Roadmap', 'help:ROADMAP').row();
   return kb;
 }
 

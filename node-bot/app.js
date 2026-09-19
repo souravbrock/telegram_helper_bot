@@ -22,6 +22,7 @@ const scheduler = require('./bot/scheduler');
 const notes = require('./bot/notes');
 const reports = require('./bot/reports');
 const helpmenu = require('./bot/helpmenu');
+const connections = require('./bot/connections');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
 const TOKEN = (process.env.BOT_TOKEN || '').trim();
@@ -65,6 +66,7 @@ let bot = null;
 if (TOKEN) {
   bot = new Bot(TOKEN);
   bot.catch((err) => console.error('bot error:', err));
+  connections.register(bot); // first: group tracking for the DM list
   admin.register(bot);
   menu.register(bot);
   antiraid.register(bot); // before captcha: raids skip verification
@@ -122,6 +124,8 @@ if (TOKEN) {
     { command: 'antiraid', description: 'Raid lockdown on/off/status' },
     { command: 'setraidlimit', description: 'Raid join limit' },
     { command: 'setraidmode', description: 'Raid action kick/ban' },
+    { command: 'connect', description: 'Link group to DM' },
+    { command: 'disconnect', description: 'Unlink DM' },
   ]).catch((e) => console.warn('setMyCommands failed:', e.message));
   bot.start({ onStart: () => console.log('bot polling started') }).catch((e) => console.error('poll start failed:', e.message));
 } else {

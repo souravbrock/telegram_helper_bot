@@ -25,6 +25,28 @@ async function isAdmin(ctx) {
   } catch { return false; }
 }
 
+/* Admin check against an explicit chat — used for DM connections. */
+async function isAdminChat(bot, chatId, userId) {
+  if (adminIds().has(Number(userId))) return true;
+  try {
+    const m = await bot.api.getChatMember(chatId, userId);
+    return m.status === 'administrator' || m.status === 'creator';
+  } catch { return false; }
+}
+
+/* Resolve which group a panel action targets: the current group, or the
+ * user's DM connection when operating from a private chat. */
+function targetChat(ctx) {
+  if (ctx.chat?.type === 'private') return store.getConnection(ctx.from.id);
+  return ctx.chat?.id ?? ctx.callbackQuery?.message?.chat.id;
+}
+
+async function openPanel(ctx, chatId) {
+  let title = '';
+  try { title = (await ctx.api.getChat(chatId)).title || String(chatId); } catch { title = String(chatId); }
+  await ctx.reply(`🛡 <b>${title}</b> — control panel\nPick a section:`, { parse_mode: 'HTML', reply_markup: kbMain() });
+}
+
 function kbMain() {
   return new InlineKeyboard()
     .text('🚫 Ban words', 'menu:filters').text('🔗 Links', 'menu:links').row()
@@ -111,13 +133,13 @@ function schedView(chatId) {
   return { text: `⏰ <b>Schedules</b>\n${lines}\n\nCreate: reply to media/text with <code>/schedule 6h caption</code>.`, kb };
 }
 
-async function askInput(ctx, label, action) {
+async function askInput(ctx, label, action, chatId) {
   const prompt = await ctx.reply(`✍️ Reply to <b>this message</b> with ${label} (2 min).`, { parse_mode: 'HTML' });
-  pendingInput.set(`${ctx.chat.id}:${ctx.from.id}`, { promptId: prompt.message_id, action, at: Date.now() });
+  pendingInput.set(`${ctx.chat.id}:${ctx.from.id}`, { promptId: prompt.message_id, action, chat: chatId, at: Date.now() });
 }
 
 async function applyInput(ctx, entry, value) {
-  const chatId = ctx.chat.id;
+  const chatId = entry.chat;
   const cfg = store.getChat(chatId, defs());
   if (entry.action === 'ban_add') {
     const set = parseCsv(cfg.blacklist_words);
@@ -153,14 +175,18 @@ function register(bot) {
 
   bot.callbackQuery(/^menu:/, async (ctx) => {
     try {
-      if (!(await isAdmin(ctx))) {
+      const chatId = targetChat(ctx);
+      if (!chatId) {
+        await ctx.answerCallbackQuery({ text: 'Connect a group first: /start → My Groups.', show_alert: true });
+        return;
+      }
+      if (!(await isAdminChat(bot, chatId, ctx.from.id))) {
         await ctx.answerCallbackQuery({ text: 'Admins only.', show_alert: true });
         return;
       }
       const [, ...rest] = (ctx.callbackQuery.data || '').split(':');
       const view = rest[0];
       const arg = rest.slice(1).join(':');
-      const chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id;
       const answer = (t) => ctx.answerCallbackQuery({ text: t }).catch(() => {});
 
       if (view === 'close') { try { await ctx.deleteMessage(); } catch {} return; }
@@ -178,10 +204,10 @@ function register(bot) {
         await show(ctx, keys.length ? '📊 <b>Stats</b>\n' + keys.sort().map((k) => `${k}: ${counts[k]}`).join('\n') : 'No moderation actions yet.', kbBack('main'));
         return;
       }
-      if (view === 'ban_add') { await askInput(ctx, 'the word(s), comma-separated', 'ban_add'); await answer('Reply to the prompt'); return; }
-      if (view === 'link_add') { await askInput(ctx, 'the domain (e.g. example.com)', 'link_add'); await answer('Reply to the prompt'); return; }
-      if (view === 'welcome_set') { await askInput(ctx, 'the welcome text ({mention}, {title}, {name})', 'welcome_set'); await answer('Reply to the prompt'); return; }
-      if (view === 'rules_set') { await askInput(ctx, 'the rules text', 'rules_set'); await answer('Reply to the prompt'); return; }
+      if (view === 'ban_add') { await askInput(ctx, 'the word(s), comma-separated', 'ban_add', chatId); await answer('Reply to the prompt'); return; }
+      if (view === 'link_add') { await askInput(ctx, 'the domain (e.g. example.com)', 'link_add', chatId); await answer('Reply to the prompt'); return; }
+      if (view === 'welcome_set') { await askInput(ctx, 'the welcome text ({mention}, {title}, {name})', 'welcome_set', chatId); await answer('Reply to the prompt'); return; }
+      if (view === 'rules_set') { await askInput(ctx, 'the rules text', 'rules_set', chatId); await answer('Reply to the prompt'); return; }
       if (view === 'reports') {
         store.saveChat(chatId, { reports_enabled: arg === '1' ? 1 : 0 }, defs());
         const v = settingsView(chatId);
@@ -293,4 +319,4 @@ function register(bot) {
   });
 }
 
-module.exports = { register };
+module.exports = { register, openPanel, isAdminChat };

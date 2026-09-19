@@ -20,9 +20,11 @@ function load() {
     d.pending = d.pending || {}; // "chat:user" -> { buttonId, deadline }
     d.notes = d.notes || {}; // chatId -> { name -> { kind, fileId, text } }
     d.filters = d.filters || {}; // chatId -> { keyword -> { kind, fileId, text } }
+    d.groups = d.groups || {}; // chatId -> { title, at } (connection registry)
+    d.conns = d.conns || {}; // userId -> chatId (active DM connection)
     return d;
   } catch {
-    return { warnings: {}, actions: [], chats: {}, pending: {}, notes: {}, filters: {} };
+    return { warnings: {}, actions: [], chats: {}, pending: {}, notes: {}, filters: {}, groups: {}, conns: {} };
   }
 }
 
@@ -207,6 +209,45 @@ function clearFilters(chatId) {
   return n;
 }
 
+/* Connections: which groups the bot has seen + each user's active DM link. */
+function trackGroup(chatId, title) {
+  if (!chatId) return;
+  const d = load();
+  d.groups[String(chatId)] = { title: String(title || '').slice(0, 120), at: Date.now() };
+  save(d);
+}
+
+function getGroups() {
+  const d = load();
+  return Object.entries(d.groups || {}).map(([chatId, g]) => ({ chatId: Number(chatId), title: g.title || String(chatId) }));
+}
+
+function untrackGroup(chatId) {
+  const d = load();
+  delete d.groups[String(chatId)];
+  for (const [u, c] of Object.entries(d.conns || {})) {
+    if (Number(c) === Number(chatId)) delete d.conns[u];
+  }
+  save(d);
+}
+
+function setConnection(userId, chatId) {
+  const d = load();
+  d.conns[String(userId)] = Number(chatId);
+  save(d);
+}
+
+function getConnection(userId) {
+  const c = load().conns[String(userId)];
+  return c ? Number(c) : null;
+}
+
+function dropConnection(userId) {
+  const d = load();
+  delete d.conns[String(userId)];
+  save(d);
+}
+
 module.exports = {
   getWarnings, addWarning, resetWarnings, logAction,
   recentActions, actionCounts, getChat, saveChat,
@@ -214,4 +255,5 @@ module.exports = {
   chatsWithSchedules, setSchedules,
   getNotes, saveNote, delNote, clearNotes,
   getFilters, saveFilter, delFilter, clearFilters,
+  trackGroup, getGroups, untrackGroup, setConnection, getConnection, dropConnection,
 };
