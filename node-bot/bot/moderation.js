@@ -2,6 +2,7 @@
 /* Auto-moderation: delete spam, warn -> mute -> kick -> ban. */
 const antispam = require('../lib/antispam');
 const store = require('../lib/store');
+const { parseCsv } = require('../lib/lists');
 const { record } = require('../lib/modlog');
 
 function env() {
@@ -61,11 +62,13 @@ function register(bot) {
       const isFwd = Boolean(ctx.msg.forward_date || ctx.msg.forward_from_chat || ctx.msg.forward_origin);
 
       const chatCfg = store.getChat(ctx.chat.id, { warnLimit: e.warnLimit, allowLinks: e.allowLinks });
+      // Per-group lists (set in-bot) merge with env-level lists.
       const verdict = antispam.check({
         chatId: ctx.chat.id, userId: ctx.from.id, text,
         hasUrlEntity: hasUrl, isForward: isFwd,
         allowLinks: Boolean(chatCfg.allow_links) || e.allowLinks,
-        whitelist: e.whitelist, blacklist: e.blacklist,
+        whitelist: new Set([...e.whitelist, ...parseCsv(chatCfg.whitelist_domains)]),
+        blacklist: new Set([...e.blacklist, ...parseCsv(chatCfg.blacklist_words)]),
         floodLimit: e.floodLimit, floodWindow: e.floodWindow,
       });
       if (!verdict.isSpam) return next();

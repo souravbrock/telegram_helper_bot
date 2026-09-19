@@ -1,6 +1,7 @@
 'use strict';
-/* Admin commands + engagement. */
+/* Admin commands + engagement + per-group configuration. */
 const store = require('../lib/store');
+const { parseCsv, normalizeDomain, setToCsv } = require('../lib/lists');
 const { record } = require('../lib/modlog');
 
 function adminIds() {
@@ -36,7 +37,10 @@ function register(bot) {
     'Auto-moderation: spam links/forwards/flood deleted, warn→mute→kick→ban.\n' +
     'Captcha verification for new members.\n\n' +
     '<b>Admin</b>\n/warn (reply) • /unwarn • /warns\n/mute 10m (reply) • /unmute\n/kick • /ban • /unban user_id\n' +
-    '/setwelcome text • /poll Q?; A; B • /stats',
+    '/setwelcome text • /poll Q?; A; B • /stats\n\n' +
+    '<b>Filters</b>\n/addbanword w1,w2 • /rmbanword w • /banwords\n' +
+    '/addlink domain • /rmlink domain • /links • /allowlinks on|off\n\n' +
+    '<b>Recurring posts</b>\n/schedule 6h text (or reply to media)\n/schedules • /unschedule id',
     { parse_mode: 'HTML' }
   ));
 
@@ -139,6 +143,71 @@ function register(bot) {
     if (!keys.length) return ctx.reply('No moderation actions yet.');
     return ctx.reply('📊 <b>Moderation stats</b>\n' + keys.sort().map((k) => `${k}: ${counts[k]}`).join('\n'), { parse_mode: 'HTML' });
   });
+
+  // ---- Per-group filter config (extensible: same CSV pattern for future items) ----
+  const chatDefs = () => ({ warnLimit: 3, allowLinks: false });
+
+  bot.command('addbanword', guard(async (ctx) => {
+    const raw = ((ctx.msg.text || '').split(/ (.+)/)[1] || '').trim();
+    if (!raw) return ctx.reply('Usage: /addbanword word1,word2 — messages containing these get deleted.');
+    const cfg = store.getChat(ctx.chat.id, chatDefs());
+    const set = parseCsv(cfg.blacklist_words);
+    raw.split(',').map((w) => w.trim().toLowerCase()).filter(Boolean).forEach((w) => set.add(w));
+    store.saveChat(ctx.chat.id, { blacklist_words: setToCsv(set).slice(0, 2000) }, chatDefs());
+    return ctx.reply(`🚫 Ban words (${set.size}): ${setToCsv(set) || '—'}`);
+  }));
+
+  bot.command('rmbanword', guard(async (ctx) => {
+    const raw = ((ctx.msg.text || '').split(/ (.+)/)[1] || '').trim().toLowerCase();
+    if (!raw) return ctx.reply('Usage: /rmbanword word');
+    const cfg = store.getChat(ctx.chat.id, chatDefs());
+    const set = parseCsv(cfg.blacklist_words);
+    set.delete(raw);
+    store.saveChat(ctx.chat.id, { blacklist_words: setToCsv(set) }, chatDefs());
+    return ctx.reply(`🚫 Ban words (${set.size}): ${setToCsv(set) || '—'}`);
+  }));
+
+  bot.command('banwords', async (ctx) => {
+    const cfg = store.getChat(ctx.chat.id, chatDefs());
+    const list = setToCsv(parseCsv(cfg.blacklist_words));
+    return ctx.reply(`🚫 Ban words: ${list || '(none — use /addbanword)'}`);
+  });
+
+  bot.command('addlink', guard(async (ctx) => {
+    const raw = ((ctx.msg.text || '').split(/ (.+)/)[1] || '').trim();
+    const dom = normalizeDomain(raw);
+    if (!dom) return ctx.reply('Usage: /addlink example.com — whitelists this domain for links.');
+    const cfg = store.getChat(ctx.chat.id, chatDefs());
+    const set = parseCsv(cfg.whitelist_domains);
+    set.add(dom);
+    store.saveChat(ctx.chat.id, { whitelist_domains: setToCsv(set).slice(0, 2000) }, chatDefs());
+    return ctx.reply(`🔗 Whitelisted domains (${set.size}): ${setToCsv(set) || '—'}`);
+  }));
+
+  bot.command('rmlink', guard(async (ctx) => {
+    const raw = ((ctx.msg.text || '').split(/ (.+)/)[1] || '').trim();
+    const dom = normalizeDomain(raw);
+    if (!dom) return ctx.reply('Usage: /rmlink example.com');
+    const cfg = store.getChat(ctx.chat.id, chatDefs());
+    const set = parseCsv(cfg.whitelist_domains);
+    set.delete(dom);
+    store.saveChat(ctx.chat.id, { whitelist_domains: setToCsv(set) }, chatDefs());
+    return ctx.reply(`🔗 Whitelisted domains (${set.size}): ${setToCsv(set) || '—'}`);
+  }));
+
+  bot.command('links', async (ctx) => {
+    const cfg = store.getChat(ctx.chat.id, chatDefs());
+    const list = setToCsv(parseCsv(cfg.whitelist_domains));
+    const env = (process.env.WHITELIST_DOMAINS || '').trim();
+    return ctx.reply(`🔗 Group whitelist: ${list || '(none)'}` + (env ? `\nGlobal whitelist: ${env}` : ''));
+  });
+
+  bot.command('allowlinks', guard(async (ctx) => {
+    const raw = ((ctx.msg.text || '').split(/ (.+)/)[1] || '').trim().toLowerCase();
+    if (!['on', 'off'].includes(raw)) return ctx.reply('Usage: /allowlinks on|off — master switch for all links (whitelist still needs the domain when off).');
+    store.saveChat(ctx.chat.id, { allow_links: raw === 'on' ? 1 : 0 }, chatDefs());
+    return ctx.reply(`🔗 Links are now ${raw.toUpperCase()} for non-admins.`);
+  }));
 }
 
 module.exports = { register };

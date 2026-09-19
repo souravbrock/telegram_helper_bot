@@ -75,16 +75,24 @@ function actionCounts() {
   return c;
 }
 
+const CHAT_DEFAULTS = {
+  welcome_text: 'Welcome {mention} to {title}! Please read the rules.',
+  captcha_enabled: 1,
+  blacklist_words: '', // per-group CSV, merged with env BLACKLIST_WORDS
+  whitelist_domains: '', // per-group CSV, merged with env WHITELIST_DOMAINS
+  schedules: [], // [{ id, every, next, srcMsg, caption, text }]
+};
+
 function getChat(chatId, defaults) {
   const d = load();
-  return (
-    d.chats[String(chatId)] || {
-      welcome_text: 'Welcome {mention} to {title}! Please read the rules.',
-      warn_limit: defaults.warnLimit,
-      allow_links: defaults.allowLinks ? 1 : 0,
-      captcha_enabled: 1,
-    }
-  );
+  const merged = {
+    ...CHAT_DEFAULTS,
+    warn_limit: defaults.warnLimit,
+    allow_links: defaults.allowLinks ? 1 : 0,
+    ...(d.chats[String(chatId)] || {}),
+  };
+  merged.schedules = [...(merged.schedules || [])]; // fresh copy, never mutate shared default
+  return merged;
 }
 
 function saveChat(chatId, patch, defaults) {
@@ -115,8 +123,23 @@ function listPending() {
   });
 }
 
+function chatsWithSchedules() {
+  const d = load();
+  return Object.entries(d.chats)
+    .filter(([, c]) => c && Array.isArray(c.schedules) && c.schedules.length)
+    .map(([chatId, c]) => ({ chatId: Number(chatId), schedules: [...c.schedules] }));
+}
+
+function setSchedules(chatId, schedules, defaults) {
+  const d = load();
+  const cur = getChat(chatId, defaults);
+  d.chats[String(chatId)] = { ...cur, schedules: [...schedules] };
+  save(d);
+}
+
 module.exports = {
   getWarnings, addWarning, resetWarnings, logAction,
   recentActions, actionCounts, getChat, saveChat,
   savePending, dropPending, listPending,
+  chatsWithSchedules, setSchedules,
 };
