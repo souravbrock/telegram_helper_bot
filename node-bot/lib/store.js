@@ -18,9 +18,11 @@ function load() {
     d.actions = d.actions || [];
     d.chats = d.chats || {};
     d.pending = d.pending || {}; // "chat:user" -> { buttonId, deadline }
+    d.notes = d.notes || {}; // chatId -> { name -> { kind, fileId, text } }
+    d.filters = d.filters || {}; // chatId -> { keyword -> { kind, fileId, text } }
     return d;
   } catch {
-    return { warnings: {}, actions: [], chats: {} , pending: {} };
+    return { warnings: {}, actions: [], chats: {}, pending: {}, notes: {}, filters: {} };
   }
 }
 
@@ -137,9 +139,69 @@ function setSchedules(chatId, schedules, defaults) {
   save(d);
 }
 
+function _bucket(bucket, chatId) {
+  const d = load();
+  d[bucket][String(chatId)] = d[bucket][String(chatId)] || {};
+  return d;
+}
+
+function getNotes(chatId) {
+  return load().notes[String(chatId)] || {};
+}
+
+function saveNote(chatId, name, note) {
+  const d = _bucket('notes', chatId);
+  d.notes[String(chatId)][name] = note;
+  save(d);
+}
+
+function delNote(chatId, name) {
+  const d = _bucket('notes', chatId);
+  const existed = Boolean(d.notes[String(chatId)][name]);
+  delete d.notes[String(chatId)][name];
+  save(d);
+  return existed;
+}
+
+function clearNotes(chatId) {
+  const d = load();
+  const n = Object.keys(d.notes[String(chatId)] || {}).length;
+  d.notes[String(chatId)] = {};
+  save(d);
+  return n;
+}
+
+function getFilters(chatId) {
+  return load().filters[String(chatId)] || {};
+}
+
+function saveFilter(chatId, keyword, content) {
+  const d = _bucket('filters', chatId);
+  d.filters[String(chatId)][keyword] = content;
+  save(d);
+}
+
+function delFilter(chatId, keyword) {
+  const d = _bucket('filters', chatId);
+  const existed = Boolean(d.filters[String(chatId)][keyword]);
+  delete d.filters[String(chatId)][keyword];
+  save(d);
+  return existed;
+}
+
+function clearFilters(chatId) {
+  const d = load();
+  const n = Object.keys(d.filters[String(chatId)] || {}).length;
+  d.filters[String(chatId)] = {};
+  save(d);
+  return n;
+}
+
 module.exports = {
   getWarnings, addWarning, resetWarnings, logAction,
   recentActions, actionCounts, getChat, saveChat,
   savePending, dropPending, listPending,
   chatsWithSchedules, setSchedules,
+  getNotes, saveNote, delNote, clearNotes,
+  getFilters, saveFilter, delFilter, clearFilters,
 };

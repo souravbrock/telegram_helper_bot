@@ -5,6 +5,7 @@
 const { InlineKeyboard } = require('grammy');
 const store = require('../lib/store');
 const { parseCsv, normalizeDomain, setToCsv } = require('../lib/lists');
+const { notesView, filtersView: keywordFiltersView } = require('./notes');
 
 const pendingInput = new Map(); // "chat:user" -> { promptId, action, at }
 
@@ -27,6 +28,7 @@ async function isAdmin(ctx) {
 function kbMain() {
   return new InlineKeyboard()
     .text('🚫 Ban words', 'menu:filters').text('🔗 Links', 'menu:links').row()
+    .text('📝 Notes', 'menu:notes').text('💬 Filters', 'menu:filtersv').row()
     .text('⏰ Schedules', 'menu:sched').text('⚙️ Settings', 'menu:settings').row()
     .text('📊 Stats', 'menu:stats').text('🗑 Close', 'menu:close');
 }
@@ -147,6 +149,8 @@ function register(bot) {
       if (view === 'links') { const v = linksView(chatId); await show(ctx, v.text, v.kb); return; }
       if (view === 'settings') { const v = settingsView(chatId); await show(ctx, v.text, v.kb); return; }
       if (view === 'sched') { const v = schedView(chatId); await show(ctx, v.text, v.kb); return; }
+      if (view === 'notes') { const v = notesView(chatId); await show(ctx, v.text, v.kb); return; }
+      if (view === 'filtersv') { const v = keywordFiltersView(chatId); await show(ctx, v.text, v.kb); return; }
       if (view === 'stats') {
         const counts = store.actionCounts();
         const keys = Object.keys(counts);

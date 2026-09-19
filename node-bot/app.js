@@ -18,6 +18,7 @@ const captcha = require('./bot/captcha');
 const admin = require('./bot/admin');
 const menu = require('./bot/menu');
 const scheduler = require('./bot/scheduler');
+const notes = require('./bot/notes');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
 const TOKEN = (process.env.BOT_TOKEN || '').trim();
@@ -63,6 +64,7 @@ if (TOKEN) {
   captcha.register(bot);
   moderation.register(bot);
   scheduler.register(bot);
+  notes.register(bot); // after moderation: deleted spam never triggers filters
   // Visible command list (hamburger menu) in Telegram clients.
   bot.api.setMyCommands([
     { command: 'menu', description: 'Open control panel (group admins)' },
@@ -86,6 +88,13 @@ if (TOKEN) {
     { command: 'schedule', description: 'Recurring post (reply to media)' },
     { command: 'schedules', description: 'List recurring posts' },
     { command: 'unschedule', description: 'Cancel a recurring post' },
+    { command: 'save', description: 'Save a note (reply)' },
+    { command: 'get', description: 'Recall a note' },
+    { command: 'notes', description: 'List notes' },
+    { command: 'clear', description: 'Delete a note' },
+    { command: 'filter', description: 'Auto-reply to a keyword' },
+    { command: 'filters', description: 'List filters' },
+    { command: 'stop', description: 'Remove a filter' },
   ]).catch((e) => console.warn('setMyCommands failed:', e.message));
   bot.start({ onStart: () => console.log('bot polling started') }).catch((e) => console.error('poll start failed:', e.message));
 } else {

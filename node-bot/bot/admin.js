@@ -41,7 +41,8 @@ function register(bot) {
     '/setwelcome text • /poll Q?; A; B • /stats\n\n' +
     '<b>Filters</b>\n/addbanword w1,w2 • /rmbanword w • /banwords\n' +
     '/addlink domain • /rmlink domain • /links • /allowlinks on|off\n\n' +
-    '<b>Recurring posts</b>\n/schedule 6h text (or reply to media)\n/schedules • /unschedule id',
+    '<b>Recurring posts</b>\n/schedule 6h text (or reply to media)\n/schedules • /unschedule id\n\n' +
+    '<b>Notes & filters</b>\n/save name (reply) • #name • /notes • /clear\n/filter kw reply • /filters • /stop',
     { parse_mode: 'HTML' }
   ));
 
