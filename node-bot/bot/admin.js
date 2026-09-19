@@ -23,10 +23,10 @@ function targetOf(ctx) {
 }
 
 function parseDur(s) {
-  const m = /^(\d+)([mhd])$/.exec((s || '').toLowerCase());
+  const m = /^(\d+)([smhdw])$/.exec((s || '').trim().toLowerCase());
   if (!m) return { sec: 3600, label: '1h' };
   const n = Number(m[1]);
-  const sec = m[2] === 'm' ? n * 60 : m[2] === 'h' ? n * 3600 : n * 86400;
+  const sec = { s: n, m: n * 60, h: n * 3600, d: n * 86400, w: n * 604800 }[m[2]];
   return { sec, label: m[0] };
 }
 
@@ -42,7 +42,9 @@ function register(bot) {
     '<b>Filters</b>\n/addbanword w1,w2 • /rmbanword w • /banwords\n' +
     '/addlink domain • /rmlink domain • /links • /allowlinks on|off\n\n' +
     '<b>Recurring posts</b>\n/schedule 6h text (or reply to media)\n/schedules • /unschedule id\n\n' +
-    '<b>Notes & filters</b>\n/save name (reply) • #name • /notes • /clear\n/filter kw reply • /filters • /stop',
+    '<b>Notes & filters</b>\n/save name (reply) • #name • /notes • /clear\n/filter kw reply • /filters • /stop\n\n' +
+    '<b>Community</b>\n/report (reply) • /rules • /setrules • /reports on|off\n/flood • /setflood n • /setfloodmode\n\n' +
+    '<b>Toolkit</b>\n/purge (reply) • /pin • /unpin\n/tmute 1d • /tban 7d • /promote • /demote • /adminlist',
     { parse_mode: 'HTML' }
   ));
 
@@ -121,6 +123,95 @@ function register(bot) {
       return ctx.reply(`✅ Unbanned <code>${t}</code>.`, { parse_mode: 'HTML' });
     } catch (e) { return ctx.reply(`Failed: ${e.message}`); }
   }));
+
+  bot.command(['tmute', 'tban'], guard(async (ctx) => {
+    const isBan = (ctx.msg.text || '').startsWith('/tban');
+    const t = targetOf(ctx);
+    if (!t) return ctx.reply(`Reply to a user: /${isBan ? 'tban' : 'tmute'} 1d`);
+    const m = (ctx.msg.text || '').match(/\/(?:tmute|tban)\s+(\d+[smhdw])/);
+    const { sec, label } = parseDur(m?.[1]);
+    try {
+      if (isBan) {
+        await ctx.api.banChatMember(ctx.chat.id, t, { until_date: Math.floor(Date.now() / 1000) + sec });
+        await record(bot, { chatId: ctx.chat.id, userId: t, action: `TEMPBAN ${label}`, byUser: ctx.from.id, chatTitle: ctx.chat.title });
+        return ctx.reply(`⛔️ Banned <code>${t}</code> for ${label}.`, { parse_mode: 'HTML' });
+      }
+      await ctx.restrictChatMember(t, { can_send_messages: false }, { until_date: Math.floor(Date.now() / 1000) + sec });
+      await record(bot, { chatId: ctx.chat.id, userId: t, action: `TEMPMUTE ${label}`, byUser: ctx.from.id, chatTitle: ctx.chat.title });
+      return ctx.reply(`🔇 Muted <code>${t}</code> for ${label}.`, { parse_mode: 'HTML' });
+    } catch (e) { return ctx.reply(`Failed (rights?): ${e.message}`); }
+  }));
+
+  bot.command('purge', guard(async (ctx) => {
+    const from = ctx.msg.reply_to_message?.message_id;
+    if (!from) return ctx.reply('Reply to the first message to purge from: /purge (reply). Deletes up to 100 after it.');
+    let n = 0;
+    for (let id = from; id <= ctx.msg.message_id && n < 100; id++) {
+      try { await ctx.api.deleteMessage(ctx.chat.id, id); n++; } catch { /* skip service/old msgs */ }
+    }
+    const done = await ctx.reply(`🧹 Purged ~${n} message(s).`);
+    setTimeout(async () => { try { await ctx.api.deleteMessage(ctx.chat.id, done.message_id); } catch {} }, 10000).unref?.();
+  }));
+
+  bot.command('pin', guard(async (ctx) => {
+    const t = ctx.msg.reply_to_message;
+    if (!t) return ctx.reply('Reply to a message: /pin [notify]');
+    const loud = /notify|loud/i.test(ctx.msg.text || '');
+    try {
+      await ctx.api.pinChatMessage(ctx.chat.id, t.message_id, { disable_notification: !loud });
+      return ctx.reply('📌 Pinned.');
+    } catch (e) { return ctx.reply(`Failed (pin right?): ${e.message}`); }
+  }));
+
+  bot.command('unpin', guard(async (ctx) => {
+    try {
+      if (ctx.msg.reply_to_message) await ctx.api.unpinChatMessage(ctx.chat.id, { message_id: ctx.msg.reply_to_message.message_id });
+      else await ctx.api.unpinAllChatMessages(ctx.chat.id);
+      return ctx.reply('📌 Unpinned.');
+    } catch (e) { return ctx.reply(`Failed: ${e.message}`); }
+  }));
+
+  bot.command('promote', guard(async (ctx) => {
+    const t = targetOf(ctx);
+    if (!t) return ctx.reply('Reply to a user: /promote (reply)');
+    try {
+      await ctx.api.promoteChatMember(ctx.chat.id, t, {
+        is_anonymous: false, can_manage_chat: false, can_change_info: false,
+        can_delete_messages: true, can_invite_users: true, can_restrict_members: false,
+        can_pin_messages: true, can_promote_members: false, can_manage_video_chats: false,
+      });
+      await record(bot, { chatId: ctx.chat.id, userId: t, action: 'PROMOTE', byUser: ctx.from.id, chatTitle: ctx.chat.title });
+      return ctx.reply(`⬆️ Promoted <code>${t}</code> (needs owner-granted promote right on me).`, { parse_mode: 'HTML' });
+    } catch (e) { return ctx.reply(`Failed: ${e.message}`); }
+  }));
+
+  bot.command('demote', guard(async (ctx) => {
+    const t = targetOf(ctx);
+    if (!t) return ctx.reply('Reply to a user: /demote (reply)');
+    try {
+      await ctx.api.promoteChatMember(ctx.chat.id, t, {
+        is_anonymous: false, can_manage_chat: false, can_change_info: false,
+        can_delete_messages: false, can_invite_users: false, can_restrict_members: false,
+        can_pin_messages: false, can_promote_members: false, can_manage_video_chats: false,
+      });
+      await record(bot, { chatId: ctx.chat.id, userId: t, action: 'DEMOTE', byUser: ctx.from.id, chatTitle: ctx.chat.title });
+      return ctx.reply(`⬇️ Demoted <code>${t}</code>.`, { parse_mode: 'HTML' });
+    } catch (e) { return ctx.reply(`Failed: ${e.message}`); }
+  }));
+
+  bot.command(['adminlist', 'admins'], async (ctx) => {
+    if (ctx.chat?.type !== 'group' && ctx.chat?.type !== 'supergroup') return;
+    try {
+      const admins = await ctx.getChatAdministrators();
+      const owners = admins.filter((a) => a.status === 'creator');
+      const rest = admins.filter((a) => a.status !== 'creator' && !a.user.is_bot);
+      const fmt = (a) => `• <a href="tg://user?id=${a.user.id}">${a.user.first_name}</a>${a.custom_title ? ` (${a.custom_title})` : ''}`;
+      await ctx.reply(
+        `👮 <b>Admins</b>\n🤴 Owner:\n${owners.map(fmt).join('\n') || '—'}\n\n${rest.map(fmt).join('\n') || '—'}`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (e) { await ctx.reply(`Failed: ${e.message}`); }
+  });
 
   bot.command('setwelcome', guard(async (ctx) => {
     const parts = (ctx.msg.text || '').split(/ (.+)/);

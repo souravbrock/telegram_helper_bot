@@ -63,23 +63,43 @@ function register(bot) {
 
       const chatCfg = store.getChat(ctx.chat.id, { warnLimit: e.warnLimit, allowLinks: e.allowLinks });
       // Per-group lists (set in-bot) merge with env-level lists.
+      // flood_limit: null = env default, 0 = off, n = custom.
+      const floodLimit = chatCfg.flood_limit === 0 ? Number.MAX_SAFE_INTEGER : (chatCfg.flood_limit ?? e.floodLimit);
+      const floodMode = ['mute', 'kick', 'ban'].includes(chatCfg.flood_mode) ? chatCfg.flood_mode : 'warn';
       const verdict = antispam.check({
         chatId: ctx.chat.id, userId: ctx.from.id, text,
         hasUrlEntity: hasUrl, isForward: isFwd,
         allowLinks: Boolean(chatCfg.allow_links) || e.allowLinks,
         whitelist: new Set([...e.whitelist, ...parseCsv(chatCfg.whitelist_domains)]),
         blacklist: new Set([...e.blacklist, ...parseCsv(chatCfg.blacklist_words)]),
-        floodLimit: e.floodLimit, floodWindow: e.floodWindow,
+        floodLimit, floodWindow: e.floodWindow,
       });
       if (!verdict.isSpam) return next();
 
       const reason = verdict.reasons.join('; ');
       const pub = publicReason(reason); // never re-publish the removed URL
+      const mention = `<a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>`;
       try { await ctx.deleteMessage(); } catch (err) { console.warn('delete failed:', err.message); }
+
+      // Flood with a direct mode skips warn escalation (Rose-style).
+      if (verdict.reasons.includes('flooding') && floodMode !== 'warn') {
+        try {
+          if (floodMode === 'ban') {
+            await ctx.banChatMember(ctx.from.id);
+          } else if (floodMode === 'kick') {
+            await ctx.banChatMember(ctx.from.id);
+            await ctx.unbanChatMember(ctx.from.id);
+          } else {
+            await ctx.restrictChatMember(ctx.from.id, { can_send_messages: false }, { until_date: Math.floor(Date.now() / 1000) + 3600 });
+          }
+          await record(bot, { chatId: ctx.chat.id, userId: ctx.from.id, action: `FLOOD_${floodMode.toUpperCase()}`, reason, chatTitle: ctx.chat.title });
+          await ctx.reply(`🌊 ${mention}: flood → ${floodMode}`, { parse_mode: 'HTML' });
+        } catch (err) { console.warn('flood action failed:', err.message); }
+        return;
+      }
 
       const count = store.addWarning(ctx.chat.id, ctx.from.id);
       const limit = parseInt(chatCfg.warn_limit || e.warnLimit, 10);
-      const mention = `<a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>`;
 
       if (count >= limit * 2) {
         try {

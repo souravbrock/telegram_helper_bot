@@ -83,6 +83,10 @@ const CHAT_DEFAULTS = {
   blacklist_words: '', // per-group CSV, merged with env BLACKLIST_WORDS
   whitelist_domains: '', // per-group CSV, merged with env WHITELIST_DOMAINS
   schedules: [], // [{ id, every, next, srcMsg, caption, text }]
+  rules_text: '', // /setrules
+  reports_enabled: 1, // /reports on|off
+  flood_limit: null, // null = env default; 0 = off; n = custom count
+  flood_mode: 'warn', // warn | mute | kick | ban (applied on flood)
 };
 
 function getChat(chatId, defaults) {

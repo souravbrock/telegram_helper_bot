@@ -19,6 +19,7 @@ const admin = require('./bot/admin');
 const menu = require('./bot/menu');
 const scheduler = require('./bot/scheduler');
 const notes = require('./bot/notes');
+const reports = require('./bot/reports');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
 const TOKEN = (process.env.BOT_TOKEN || '').trim();
@@ -68,6 +69,7 @@ if (TOKEN) {
   moderation.register(bot);
   scheduler.register(bot);
   notes.register(bot); // after moderation: deleted spam never triggers filters
+  reports.register(bot);
   // Visible command list (hamburger menu) in Telegram clients.
   bot.api.setMyCommands([
     { command: 'menu', description: 'Open control panel (group admins)' },
@@ -98,6 +100,21 @@ if (TOKEN) {
     { command: 'filter', description: 'Auto-reply to a keyword' },
     { command: 'filters', description: 'List filters' },
     { command: 'stop', description: 'Remove a filter' },
+    { command: 'report', description: 'Report a message (reply)' },
+    { command: 'rules', description: 'Show group rules' },
+    { command: 'setrules', description: 'Set group rules' },
+    { command: 'reports', description: 'Reports on/off' },
+    { command: 'setflood', description: 'Flood limit' },
+    { command: 'setfloodmode', description: 'Flood action' },
+    { command: 'flood', description: 'Flood status' },
+    { command: 'purge', description: 'Delete range (reply)' },
+    { command: 'pin', description: 'Pin (reply)' },
+    { command: 'unpin', description: 'Unpin' },
+    { command: 'tmute', description: 'Temp mute (reply)' },
+    { command: 'tban', description: 'Temp ban (reply)' },
+    { command: 'promote', description: 'Promote (reply)' },
+    { command: 'demote', description: 'Demote (reply)' },
+    { command: 'adminlist', description: 'List admins' },
   ]).catch((e) => console.warn('setMyCommands failed:', e.message));
   bot.start({ onStart: () => console.log('bot polling started') }).catch((e) => console.error('poll start failed:', e.message));
 } else {

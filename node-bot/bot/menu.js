@@ -73,14 +73,29 @@ function linksView(chatId) {
 
 function settingsView(chatId) {
   const cfg = store.getChat(chatId, defs());
+  const envN = parseInt(process.env.FLOOD_LIMIT || '5', 10);
+  const cur = typeof cfg.flood_limit === 'number' ? cfg.flood_limit : envN;
+  const floodLabel = cfg.flood_limit === 0 ? 'OFF' : (cfg.flood_limit ?? `${envN} (env)`);
+  const modes = ['warn', 'mute', 'kick', 'ban'];
+  const nextMode = modes[(modes.indexOf(cfg.flood_mode || 'warn') + 1) % modes.length];
   const kb = new InlineKeyboard()
-    .text(`Captcha: ${cfg.captcha_enabled ? 'ON' : 'OFF'}`, `menu:captcha:${cfg.captcha_enabled ? '0' : '1'}`).row()
+    .text(`Captcha: ${cfg.captcha_enabled ? 'ON' : 'OFF'}`, `menu:captcha:${cfg.captcha_enabled ? '0' : '1'}`)
+    .text(`Reports: ${Number(cfg.reports_enabled ?? 1) ? 'ON' : 'OFF'}`, `menu:reports:${Number(cfg.reports_enabled ?? 1) ? '0' : '1'}`).row()
     .text('➖ Warns', `menu:warn:${Math.max(1, (cfg.warn_limit || 3) - 1)}`)
     .text(`Limit: ${cfg.warn_limit || 3}`, 'menu:noop')
     .text('➕ Warns', `menu:warn:${Math.min(10, (cfg.warn_limit || 3) + 1)}`).row()
-    .text('✏️ Set welcome', 'menu:welcome_set').row()
+    .text(`🌊 Flood: ${floodLabel}`, 'menu:noop')
+    .text('➖', `menu:floodlim:${Math.max(0, cur - 1)}`)
+    .text('➕', `menu:floodlim:${cur === 0 ? envN : Math.min(30, cur + 1)}`).row()
+    .text(`Flood→${(cfg.flood_mode || 'warn').toUpperCase()} (tap: ${nextMode})`, `menu:floodmode:${nextMode}`).row()
+    .text('✏️ Set welcome', 'menu:welcome_set')
+    .text('✏️ Set rules', 'menu:rules_set').row()
     .text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
-  return { text: `⚙️ <b>Settings</b>\nWelcome: <i>${(cfg.welcome_text || '').slice(0, 120)}</i>`, kb };
+  return {
+    text: `⚙️ <b>Settings</b>\nWelcome: <i>${(cfg.welcome_text || '').slice(0, 80)}</i>\n` +
+      `Rules: <i>${((cfg.rules_text || '').slice(0, 80)) || '(none)'}</i>`,
+    kb,
+  };
 }
 
 function schedView(chatId) {
@@ -120,6 +135,10 @@ async function applyInput(ctx, entry, value) {
     store.saveChat(chatId, { welcome_text: value.slice(0, 1000) }, defs());
     const v = settingsView(chatId);
     await show(ctx, `✅ Welcome updated.\n\n${v.text}`, v.kb);
+  } else if (entry.action === 'rules_set') {
+    store.saveChat(chatId, { rules_text: value.slice(0, 2000) }, defs());
+    const v = settingsView(chatId);
+    await show(ctx, `✅ Rules updated.\n\n${v.text}`, v.kb);
   }
 }
 
@@ -160,6 +179,30 @@ function register(bot) {
       if (view === 'ban_add') { await askInput(ctx, 'the word(s), comma-separated', 'ban_add'); await answer('Reply to the prompt'); return; }
       if (view === 'link_add') { await askInput(ctx, 'the domain (e.g. example.com)', 'link_add'); await answer('Reply to the prompt'); return; }
       if (view === 'welcome_set') { await askInput(ctx, 'the welcome text ({mention}, {title}, {name})', 'welcome_set'); await answer('Reply to the prompt'); return; }
+      if (view === 'rules_set') { await askInput(ctx, 'the rules text', 'rules_set'); await answer('Reply to the prompt'); return; }
+      if (view === 'reports') {
+        store.saveChat(chatId, { reports_enabled: arg === '1' ? 1 : 0 }, defs());
+        const v = settingsView(chatId);
+        await show(ctx, v.text, v.kb);
+        await answer(`Reports ${arg === '1' ? 'ON' : 'OFF'}`);
+        return;
+      }
+      if (view === 'floodlim') {
+        const n = Math.max(0, Math.min(30, Number(arg) || 0));
+        store.saveChat(chatId, { flood_limit: n }, defs());
+        const v = settingsView(chatId);
+        await show(ctx, v.text, v.kb);
+        await answer(n === 0 ? 'Flood OFF' : `Flood limit ${n}`);
+        return;
+      }
+      if (view === 'floodmode') {
+        const mode = ['warn', 'mute', 'kick', 'ban'].includes(arg) ? arg : 'warn';
+        store.saveChat(chatId, { flood_mode: mode }, defs());
+        const v = settingsView(chatId);
+        await show(ctx, v.text, v.kb);
+        await answer(`Flood action ${mode.toUpperCase()}`);
+        return;
+      }
       if (view === 'ban_del') {
         const set = parseCsv(store.getChat(chatId, defs()).blacklist_words);
         set.delete(arg.toLowerCase());
