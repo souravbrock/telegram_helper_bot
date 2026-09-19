@@ -22,6 +22,9 @@ const notes = require('./bot/notes');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
 const TOKEN = (process.env.BOT_TOKEN || '').trim();
+// cPanel ea-passenger (Phusion) takes over listen() — call it bare, exactly
+// like the known-good spdelivery app on this host. Everywhere else bind PORT.
+const UNDER_PASSENGER = Boolean(process.env.PASSENGER_APP_ENV || process.env.PASSENGER_SPAWN_WORK_DIR);
 
 const app = express();
 app.use(express.json());
@@ -101,4 +104,4 @@ if (TOKEN) {
   console.warn('BOT_TOKEN missing — API only. Copy .env.example to .env.');
 }
 
-app.listen(PORT, () => console.log(`web listening on ${PORT}`));
+app.listen(...(UNDER_PASSENGER ? [] : [PORT]), () => console.log(`web listening on ${UNDER_PASSENGER ? 'passenger socket' : PORT}`));

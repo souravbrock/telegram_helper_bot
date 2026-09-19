@@ -6,6 +6,9 @@
 const http = require('http');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
+// cPanel ea-passenger hijacks listen() — like the working spdelivery app,
+// call it bare under Passenger; bind PORT everywhere else (local, Render).
+const UNDER_PASSENGER = Boolean(process.env.PASSENGER_APP_ENV || process.env.PASSENGER_SPAWN_WORK_DIR);
 
 const interesting = {};
 for (const k of Object.keys(process.env).sort()) {
@@ -19,4 +22,4 @@ http
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, probe: true, port: PORT, node: process.version, env: interesting }));
   })
-  .listen(PORT);
+  .listen(...(UNDER_PASSENGER ? [] : [PORT]));
