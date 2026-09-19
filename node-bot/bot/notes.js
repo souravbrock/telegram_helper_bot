@@ -28,6 +28,14 @@ async function isAdmin(ctx) {
   } catch { return false; }
 }
 
+async function isAdminIn(bot, chatId, userId) {
+  if (adminIds().has(Number(userId))) return true;
+  try {
+    const m = await bot.api.getChatMember(chatId, userId);
+    return m.status === 'administrator' || m.status === 'creator';
+  } catch { return false; }
+}
+
 function inGroup(ctx) {
   return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
 }
