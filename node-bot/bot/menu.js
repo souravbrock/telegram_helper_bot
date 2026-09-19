@@ -200,11 +200,30 @@ async function applyInput(ctx, entry, value) {
   }
 }
 
+let cachedUsername = (process.env.BOT_USERNAME || '').trim().replace(/^@/, '');
+async function botUsername(bot) {
+  if (!cachedUsername) {
+    try { cachedUsername = ((await bot.api.getMe()).username || '').replace(/^@/, ''); } catch {}
+  }
+  return cachedUsername;
+}
+
 function register(bot) {
   bot.command('menu', async (ctx) => {
+    // Private-by-default: the panel never opens in the group. Admins get a
+    // self-destructing deep link; everyone else gets silence (privacy).
     if (ctx.chat?.type !== 'group' && ctx.chat?.type !== 'supergroup') return ctx.reply('Use /menu inside the group.');
-    if (!(await isAdmin(ctx))) return ctx.reply('Only admins can open the control panel.');
-    await ctx.reply('🛡 <b>Group control panel</b>\nPick a module:', { parse_mode: 'HTML', reply_markup: kbMain() });
+    try { await ctx.deleteMessage(); } catch {} // erase the command itself
+    if (!(await isAdmin(ctx))) return; // non-admins: nothing to see
+    const username = await botUsername(bot);
+    const kb = username
+      ? new InlineKeyboard().url('🔐 Open control panel', `https://t.me/${username}?start=menu_${ctx.chat.id}`)
+      : undefined;
+    const note = await ctx.reply(
+      `🔐 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>, the control panel is private — tap below (DM). This message self-destructs.`,
+      { parse_mode: 'HTML', reply_markup: kb }
+    );
+    setTimeout(async () => { try { await ctx.api.deleteMessage(ctx.chat.id, note.message_id); } catch {} }, 60 * 1000).unref?.();
   });
 
   bot.callbackQuery(/^menu:/, async (ctx) => {

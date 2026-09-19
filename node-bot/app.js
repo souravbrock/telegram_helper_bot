@@ -105,6 +105,7 @@ if (TOKEN) {
     { command: 'notes', description: 'List notes' },
     { command: 'clear', description: 'Delete a note' },
     { command: 'filter', description: 'Auto-reply to a keyword' },
+    { command: 'autoreply', description: 'Guided smart reply' },
     { command: 'filters', description: 'List filters' },
     { command: 'stop', description: 'Remove a filter' },
     { command: 'report', description: 'Report a message (reply)' },

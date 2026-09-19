@@ -50,8 +50,9 @@ function escRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function matchesKeyword(text, kw) {
+function matchesKeyword(text, kw, cs) {
   if (!text || !kw) return false;
+  if (cs) return text.includes(kw); // case-sensitive, exact
   if (/\s/.test(kw)) return text.toLowerCase().includes(kw.toLowerCase());
   return new RegExp(`\\b${escRe(kw)}\\b`, 'i').test(text);
 }
@@ -96,12 +97,14 @@ function notesView(chatId) {
 }
 
 function filtersView(chatId) {
-  const kws = Object.keys(store.getFilters(chatId)).sort();
+  const all = store.getFilters(chatId);
+  const kws = Object.keys(all).sort();
   const kb = new InlineKeyboard();
-  for (const k of kws) kb.text(`❌ ${k}`, `menu:filter_del:${k}`).row();
+  kb.text('➕ New smart reply', 'ar:new').row();
+  for (const k of kws) kb.text(`❌ ${k}${all[k]?.cs ? ' [Aa]' : ''}`.slice(0, 60), `menu:filter_del:${k.slice(0, 47)}`).row();
   if (kws.length) kb.text('🗑 Stop ALL', 'menu:filters_wipe').row();
   kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
-  return { text: `💬 <b>Filters</b> (${kws.length})\n${kws.map((k) => `<code>${k}</code>`).join(' ') || '(none — /filter keyword + reply)'}`, kb };
+  return { text: `💬 <b>Filters</b> (${kws.length})\n${kws.map((k) => `<code>${k}</code>${all[k]?.cs ? ' [case-sensitive]' : ''}`).join(' ') || '(none — /filter keyword + reply, or ➕ New smart)'}`, kb };
 }
 
 async function show(ctx, text, kb) {
@@ -181,14 +184,15 @@ function register(bot) {
       content = { ...content, text: trailing };
     }
     if (!content) return ctx.reply('Give reply content: /filter hello Hi there! (or reply to media).');
-    store.saveFilter(ctx.chat.id, kw, content);
+    store.saveFilter(ctx.chat.id, kw, { ...content, cs: 0 });
     return ctx.reply(`💬 Filter <code>${kw}</code> → ${describe(content)}.`, { parse_mode: 'HTML' });
   }));
 
   bot.command('filters', async (ctx) => {
     if (!inGroup(ctx)) return;
-    const kws = Object.keys(store.getFilters(ctx.chat.id)).sort();
-    await ctx.reply(kws.length ? `💬 <b>Filters</b>\n${kws.map((k) => `<code>${k}</code>`).join('\n')}` : 'No filters yet.', { parse_mode: 'HTML' });
+    const all = store.getFilters(ctx.chat.id);
+    const kws = Object.keys(all).sort();
+    await ctx.reply(kws.length ? `💬 <b>Filters</b>\n${kws.map((k) => `<code>${k}</code>${all[k]?.cs ? ' [Aa]' : ''}`).join('\n')}` : 'No filters yet. /filter or /autoreply.', { parse_mode: 'HTML' });
   });
 
   bot.command('stop', guard(async (ctx) => {
@@ -218,7 +222,7 @@ function register(bot) {
       const filters = store.getFilters(ctx.chat.id);
       const kws = Object.keys(filters);
       if (kws.length && !looksLikeSpam(ctx)) {
-        const hit = kws.find((k) => matchesKeyword(text, k));
+        const hit = kws.find((k) => matchesKeyword(text, k, filters[k]?.cs ? true : false));
         if (hit) {
           await sendContent(ctx.api, ctx.chat.id, filters[hit], targetOf(ctx), ctx.chat.title, ctx.msg.message_id);
         }
@@ -226,6 +230,145 @@ function register(bot) {
       return next();
     } catch (err) {
       console.error('notes/filters error:', err);
+    }
+  });
+
+  // ---------- Smart autoreply wizard: keyword → case choice → content → save.
+  // Works in groups and DM connections. Replies carry text and/or media;
+  // links work inline and as [Label](url) buttons. ----------
+  const arwiz = new Map(); // "chat:user" -> { chat, step, kw, cs, content, promptId, at }
+  const AR_TTL = 5 * 60 * 1000;
+
+  function wizTarget(ctx) {
+    if (ctx.chat?.type === 'private') return store.getConnection(ctx.from.id);
+    return ctx.chat?.id;
+  }
+
+  async function wizAsk(ctx, entry, text, kb) {
+    const p = await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
+    entry.promptId = p.message_id;
+    entry.at = Date.now();
+  }
+
+  async function arStart(ctx, chatId) {
+    const entry = { chat: chatId, step: 'keyword', at: Date.now(), promptId: 0 };
+    arwiz.set(`${ctx.chat.id}:${ctx.from.id}`, entry);
+    await wizAsk(ctx, entry, '💬 <b>Smart reply 1/3 — keyword.</b> Reply to <b>this message</b> with the trigger phrase (e.g. <code>doctor</code>).');
+  }
+
+  bot.command('autoreply', async (ctx) => {
+    const chatId = wizTarget(ctx);
+    if (!chatId) return ctx.reply('Connect a group first: /start → My Groups.');
+    const admin = ctx.chat?.type === 'private'
+      ? await isAdminIn(bot, chatId, ctx.from.id)
+      : await isAdmin(ctx);
+    if (!admin) return ctx.reply('Only admins can use this.');
+    await arStart(ctx, chatId);
+  });
+
+  bot.callbackQuery(/^ar:/, async (ctx) => {
+    try {
+      const data = (ctx.callbackQuery.data || '').slice('ar:'.length);
+      const answer = (t) => ctx.answerCallbackQuery({ text: t }).catch(() => {});
+      const k = `${ctx.chat.id}:${ctx.from.id}`;
+
+      if (data === 'new') {
+        let chatId = ctx.chat?.id;
+        if (ctx.chat?.type === 'private') chatId = store.getConnection(ctx.from.id);
+        if (!chatId) { await ctx.answerCallbackQuery({ text: 'Connect a group first.', show_alert: true }); return; }
+        const admin = ctx.chat?.type === 'private'
+          ? await isAdminIn(bot, chatId, ctx.from.id)
+          : await isAdmin(ctx);
+        if (!admin) { await ctx.answerCallbackQuery({ text: 'Admins only.', show_alert: true }); return; }
+        await arStart(ctx, chatId);
+        await answer('Reply to the prompt');
+        return;
+      }
+
+      const entry = arwiz.get(k);
+      if (!entry || Date.now() - entry.at > AR_TTL) {
+        arwiz.delete(k);
+        await answer('Wizard expired — start again.');
+        return;
+      }
+      entry.at = Date.now();
+
+      if (data === 'cs:1' || data === 'cs:0') {
+        if (entry.step !== 'case') { await answer(' '); return; }
+        entry.cs = data === 'cs:1' ? 1 : 0;
+        if (!entry.cs) entry.kw = entry.kw.toLowerCase();
+        entry.step = 'content';
+        await wizAsk(ctx, entry, `💬 <b>Smart reply 3/3 — answer.</b> Reply to <b>this message</b> with the reply: text, photo/video/file, or both (caption = text). Links work inline or as <code>[Label](url)</code> buttons.`);
+        try { await ctx.deleteMessage(); } catch {}
+        await answer(data === 'cs:1' ? 'Case-SENSITIVE' : 'Case-insensitive');
+        return;
+      }
+
+      if (data === 'save') {
+        if (entry.step !== 'review') { await answer(' '); return; }
+        store.saveFilter(entry.chat, entry.kw, { ...entry.content, cs: entry.cs ? 1 : 0 });
+        arwiz.delete(k);
+        try {
+          await ctx.editMessageText(
+            `✅ Smart reply saved: <code>${entry.kw}</code>${entry.cs ? ' [case-sensitive]' : ''} → ${describe(entry.content)}.\nTriggers like: <i>${entry.cs ? 'exact "' + entry.kw + '"' : 'any case "' + entry.kw.toLowerCase() + '" words'}</i>`,
+            { parse_mode: 'HTML' }
+          );
+        } catch {}
+        await answer('Saved');
+        return;
+      }
+
+      if (data === 'cancel') {
+        arwiz.delete(k);
+        try { await ctx.editMessageText('🚫 Smart reply cancelled.'); } catch {}
+        await answer('Cancelled');
+        return;
+      }
+      await answer(' ');
+    } catch (err) {
+      try { await ctx.answerCallbackQuery({ text: String(err.message).slice(0, 180) }); } catch {}
+    }
+  });
+
+  // Wizard input consumer: keyword + content steps (text and media).
+  bot.on('message', async (ctx, next) => {
+    try {
+      if (!ctx.from || ctx.from.is_bot) return next();
+      const k = `${ctx.chat.id}:${ctx.from.id}`;
+      const entry = arwiz.get(k);
+      if (!entry) return next();
+      if (Date.now() - entry.at > AR_TTL) { arwiz.delete(k); return next(); }
+      if ((ctx.msg.text || '').startsWith('/')) return next();
+      if (!ctx.msg.reply_to_message || ctx.msg.reply_to_message.message_id !== entry.promptId) return next();
+      entry.at = Date.now();
+
+      if (entry.step === 'keyword') {
+        const kw = (ctx.msg.text || '').trim().slice(0, 60);
+        if (!kw) { await ctx.reply('Send the trigger phrase as text.'); return; }
+        entry.kw = kw; // case decided next step; lowercased then if insensitive
+        entry.step = 'case';
+        const kb = new InlineKeyboard()
+          .text('🔠 Aa — exact case', 'ar:cs:1')
+          .text('🔡 aa — any case', 'ar:cs:0');
+        await wizAsk(ctx, entry, `💬 <b>Smart reply 2/3 — matching</b> for <code>${entry.kw}</code>.\nShould <code>${entry.kw}</code> match only this exact case?`, kb);
+        try { await ctx.deleteMessage(); } catch {}
+        return;
+      }
+
+      if (entry.step === 'content') {
+        const c = capture(ctx.msg);
+        if (!c || (!c.text && !c.fileId)) { await ctx.reply('Reply with text and/or media (photo, video, file).'); return; }
+        entry.content = { kind: c.kind, fileId: c.fileId, text: (c.text || '').slice(0, 2000) };
+        entry.step = 'review';
+        const kb = new InlineKeyboard().text('✅ Save', 'ar:save').text('❌ Cancel', 'ar:cancel');
+        await wizAsk(ctx, entry,
+          `📝 <b>Review</b>\nTrigger: <code>${entry.kw}</code>${entry.cs ? ' [case-sensitive]' : ' [any case]'}\nReply: ${describe(entry.content)}\nSave?`, kb);
+        try { await ctx.deleteMessage(); } catch {}
+        return;
+      }
+      return next();
+    } catch (err) {
+      console.error('autoreply wizard error:', err);
     }
   });
 
@@ -251,8 +394,11 @@ function register(bot) {
         const v = notesView(chatId);
         await show(ctx, v.text, v.kb);
         await answer('Note deleted');
-      } else if (data.startsWith('menu:filter_del:')) {
-        store.delFilter(chatId, data.slice('menu:filter_del:'.length));
+      } else       if (data.startsWith('menu:filter_del:')) {
+        const key = data.slice('menu:filter_del:'.length);
+        const all = store.getFilters(chatId);
+        const exact = Object.keys(all).find((k) => k === key || k.startsWith(key));
+        if (exact) store.delFilter(chatId, exact);
         const v = filtersView(chatId);
         await show(ctx, v.text, v.kb);
         await answer('Filter removed');

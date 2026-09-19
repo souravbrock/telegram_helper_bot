@@ -8,6 +8,7 @@ const { InlineKeyboard } = require('grammy');
 const store = require('../lib/store');
 const { record } = require('../lib/modlog');
 const { home } = require('./helpmenu');
+const { openPanel } = require('./menu');
 
 const MUTED = { can_send_messages: false, can_send_media_messages: false, can_send_other_messages: false, can_add_web_page_previews: false };
 const OPEN = { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true };
@@ -149,9 +150,22 @@ function register(bot) {
     }
   });
 
-  // Deep link from the Verify button -> math quiz in DM.
+  // Deep links: Verify button -> math quiz; /menu button -> private panel.
   bot.command('start', async (ctx) => {
     const payload = ((ctx.msg.text || '').split(' ')[1] || '').trim();
+    const mm = /^menu_(-?\d+)$/.exec(payload);
+    if (mm && ctx.chat.type === 'private') {
+      const chatId = Number(mm[1]);
+      try {
+        const m = await ctx.api.getChatMember(chatId, ctx.from.id);
+        if (m.status !== 'administrator' && m.status !== 'creator') return ctx.reply('Only group admins can open the panel.');
+      } catch {
+        return ctx.reply('Cannot verify you there (bot removed?).');
+      }
+      store.setConnection(ctx.from.id, chatId);
+      await openPanel(ctx, chatId);
+      return;
+    }
     const m = /^verify_(-?\d+)_(\d+)$/.exec(payload);
     if (!m) {
       if (ctx.chat.type !== 'private') {
