@@ -6,6 +6,7 @@ const { InlineKeyboard } = require('grammy');
 const store = require('../lib/store');
 const { parseCsv, normalizeDomain, setToCsv } = require('../lib/lists');
 const { notesView, filtersView: keywordFiltersView } = require('./notes');
+const { MODULES } = require('./helpmenu');
 
 const pendingInput = new Map(); // "chat:user" -> { promptId, action, at }
 
@@ -44,15 +45,45 @@ function targetChat(ctx) {
 async function openPanel(ctx, chatId) {
   let title = '';
   try { title = (await ctx.api.getChat(chatId)).title || String(chatId); } catch { title = String(chatId); }
-  await ctx.reply(`🛡 <b>${title}</b> — control panel\nPick a section:`, { parse_mode: 'HTML', reply_markup: kbMain() });
+  await ctx.reply(`🛡 <b>${title}</b> — control panel\nPick a module:`, { parse_mode: 'HTML', reply_markup: kbMain() });
 }
 
 function kbMain() {
-  return new InlineKeyboard()
-    .text('🚫 Ban words', 'menu:filters').text('🔗 Links', 'menu:links').row()
-    .text('📝 Notes', 'menu:notes').text('💬 Filters', 'menu:filtersv').row()
-    .text('⏰ Schedules', 'menu:sched').text('⚙️ Settings', 'menu:settings').row()
-    .text('📊 Stats', 'menu:stats').text('🗑 Close', 'menu:close');
+  // Rose-style module grid; each module opens help + shortcut buttons.
+  const kb = new InlineKeyboard();
+  const keys = Object.keys(MODULES);
+  keys.forEach((k, i) => {
+    kb.text(k, `menu:mod:${k}`);
+    if (i % 3 === 2) kb.row();
+  });
+  if (keys.length % 3 !== 0) kb.row();
+  kb.text('📊 Stats', 'menu:stats').text('🗑 Close', 'menu:close');
+  return kb;
+}
+
+/* Which existing panel views each module shortcuts to. */
+const MOD_PANELS = {
+  Blocklists: ['filters', 'links'],
+  Notes: ['notes'],
+  Filters: ['filtersv'],
+  Schedules: ['sched'],
+  Antiflood: ['settings'],
+  Captcha: ['settings'],
+  Greetings: ['settings'],
+  Rules: ['settings'],
+  Reports: ['settings'],
+  Warnings: ['settings'],
+  Log: ['stats'],
+  Bans: [], Admin: [], Pin: [], Purges: [], AntiRaid: [],
+};
+
+const PANEL_LABEL = { filters: 'Ban words', links: 'Links', notes: 'Notes', filtersv: 'Filters', sched: 'Schedules', settings: 'Settings', stats: 'Stats' };
+
+function modView(name) {
+  const kb = new InlineKeyboard();
+  for (const p of MOD_PANELS[name] || []) kb.text(`➡️ ${PANEL_LABEL[p] || p}`, `menu:${p}`).row();
+  kb.text('⬅️ Modules', 'menu:main').text('🗑 Close', 'menu:close');
+  return { text: `${MODULES[name] || name}`, kb };
 }
 
 function kbBack(to) {
@@ -124,13 +155,16 @@ function settingsView(chatId) {
 
 function schedView(chatId) {
   const cfg = store.getChat(chatId, defs());
-  const kb = new InlineKeyboard();
+  const tz = typeof cfg.tz_offset === 'number' ? cfg.tz_offset : parseInt(process.env.DEFAULT_TZ_MIN || '330', 10);
+  const sign = tz < 0 ? '-' : '+';
+  const tzLabel = `${sign}${String(Math.floor(Math.abs(tz) / 60)).padStart(2, '0')}:${String(Math.abs(tz) % 60).padStart(2, '0')}`;
+  const kb = new InlineKeyboard().text('➕ New guided', 'sch:new').row();
   for (const s of cfg.schedules) kb.text(`❌ ${s.id}`, `menu:sched_del:${s.id}`).row();
   kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
   const lines = cfg.schedules.length
     ? cfg.schedules.map((s) => `<code>${s.id}</code> every ${s.every}s — ${s.srcMsg ? `media #${s.srcMsg}` : (s.text || '').slice(0, 30)}`).join('\n')
     : '(none)';
-  return { text: `⏰ <b>Schedules</b>\n${lines}\n\nCreate: reply to media/text with <code>/schedule 6h caption</code>.`, kb };
+  return { text: `⏰ <b>Schedules</b> (group time UTC${tzLabel} — /settz to change)\n${lines}\n\nGuided: tap ➕ New. Quick: reply to media/text with <code>/schedule 6h caption</code>.`, kb };
 }
 
 async function askInput(ctx, label, action, chatId) {
@@ -170,7 +204,7 @@ function register(bot) {
   bot.command('menu', async (ctx) => {
     if (ctx.chat?.type !== 'group' && ctx.chat?.type !== 'supergroup') return ctx.reply('Use /menu inside the group.');
     if (!(await isAdmin(ctx))) return ctx.reply('Only admins can open the control panel.');
-    await ctx.reply('🛡 <b>Group control panel</b>\nPick a section:', { parse_mode: 'HTML', reply_markup: kbMain() });
+    await ctx.reply('🛡 <b>Group control panel</b>\nPick a module:', { parse_mode: 'HTML', reply_markup: kbMain() });
   });
 
   bot.callbackQuery(/^menu:/, async (ctx) => {
@@ -191,7 +225,13 @@ function register(bot) {
 
       if (view === 'close') { try { await ctx.deleteMessage(); } catch {} return; }
       if (view === 'noop') { await answer(' '); return; }
-      if (view === 'main') { const v = { text: '🛡 <b>Group control panel</b>\nPick a section:', kb: kbMain() }; await show(ctx, v.text, v.kb); return; }
+      if (view === 'main') { const v = { text: '🛡 <b>Group control panel</b>\nPick a module:', kb: kbMain() }; await show(ctx, v.text, v.kb); return; }
+      if (view === 'mod') {
+        if (!MODULES[arg]) { await answer('Unknown module'); return; }
+        const v = modView(arg);
+        await show(ctx, v.text, v.kb);
+        return;
+      }
       if (view === 'filters') { const v = filtersView(chatId); await show(ctx, v.text, v.kb); return; }
       if (view === 'links') { const v = linksView(chatId); await show(ctx, v.text, v.kb); return; }
       if (view === 'settings') { const v = settingsView(chatId); await show(ctx, v.text, v.kb); return; }

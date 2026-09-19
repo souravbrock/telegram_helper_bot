@@ -95,6 +95,7 @@ const CHAT_DEFAULTS = {
   antiraid_mode: 'kick', // kick | ban during lockdown
   antiraid_duration: 3600, // lockdown seconds
   antiraid_until: 0, // timestamp ms; > now = lockdown active
+  tz_offset: null, // minutes east of UTC; null = env DEFAULT_TZ_MIN (330)
 };
 
 function getChat(chatId, defaults) {

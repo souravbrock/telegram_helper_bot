@@ -75,4 +75,4 @@ function register(bot) {
   });
 }
 
-module.exports = { register, home };
+module.exports = { register, home, MODULES };

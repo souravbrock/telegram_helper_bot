@@ -304,4 +304,4 @@ function register(bot) {
   });
 }
 
-module.exports = { register, notesView, filtersView };
+module.exports = { register, notesView, filtersView, captureContent: capture };

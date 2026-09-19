@@ -99,6 +99,7 @@ if (TOKEN) {
     { command: 'schedule', description: 'Recurring post (reply to media)' },
     { command: 'schedules', description: 'List recurring posts' },
     { command: 'unschedule', description: 'Cancel a recurring post' },
+    { command: 'settz', description: 'Group timezone +5:30' },
     { command: 'save', description: 'Save a note (reply)' },
     { command: 'get', description: 'Recall a note' },
     { command: 'notes', description: 'List notes' },
