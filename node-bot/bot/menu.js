@@ -74,6 +74,7 @@ const MOD_PANELS = {
   Reports: ['settings'],
   Warnings: ['settings'],
   Log: ['stats'],
+  Autoreply: ['filtersv'],
   Bans: [], Admin: [], Pin: [], Purges: [], AntiRaid: [],
 };
 
