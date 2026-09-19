@@ -20,6 +20,7 @@ const menu = require('./bot/menu');
 const scheduler = require('./bot/scheduler');
 const notes = require('./bot/notes');
 const reports = require('./bot/reports');
+const helpmenu = require('./bot/helpmenu');
 
 const PORT = parseInt(process.env.PORT || process.env.APP_PORT || '3000', 10);
 const TOKEN = (process.env.BOT_TOKEN || '').trim();
@@ -70,6 +71,7 @@ if (TOKEN) {
   scheduler.register(bot);
   notes.register(bot); // after moderation: deleted spam never triggers filters
   reports.register(bot);
+  helpmenu.register(bot); // DM module-grid callbacks
   // Visible command list (hamburger menu) in Telegram clients.
   bot.api.setMyCommands([
     { command: 'menu', description: 'Open control panel (group admins)' },

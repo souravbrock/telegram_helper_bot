@@ -7,6 +7,7 @@
 const { InlineKeyboard } = require('grammy');
 const store = require('../lib/store');
 const { record } = require('../lib/modlog');
+const { home } = require('./helpmenu');
 
 const MUTED = { can_send_messages: false, can_send_media_messages: false, can_send_other_messages: false, can_add_web_page_previews: false };
 const OPEN = { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true };
@@ -153,10 +154,11 @@ function register(bot) {
     const payload = ((ctx.msg.text || '').split(' ')[1] || '').trim();
     const m = /^verify_(-?\d+)_(\d+)$/.exec(payload);
     if (!m) {
-      return ctx.reply(
-        '🤖 <b>Group Assistant</b>\nAdd me to a group as admin and I handle spam, verification, welcomes and polls.\n\nType /help in the group for commands.',
-        { parse_mode: 'HTML' }
-      );
+      if (ctx.chat.type !== 'private') {
+        return ctx.reply('🤖 I manage this group — admins, open /menu. Full guide: message me in private.');
+      }
+      const h = home(); // Rose-style module grid
+      return ctx.reply(h.text, { parse_mode: 'HTML', reply_markup: h.kb });
     }
     if (ctx.chat.type !== 'private') return; // button always opens DM
     const chatId = Number(m[1]);
