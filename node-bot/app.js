@@ -63,6 +63,30 @@ if (TOKEN) {
   captcha.register(bot);
   moderation.register(bot);
   scheduler.register(bot);
+  // Visible command list (hamburger menu) in Telegram clients.
+  bot.api.setMyCommands([
+    { command: 'menu', description: 'Open control panel (group admins)' },
+    { command: 'help', description: 'Show all commands' },
+    { command: 'warn', description: 'Warn a user (reply)' },
+    { command: 'unwarn', description: 'Clear warns (reply)' },
+    { command: 'warns', description: 'Show warns' },
+    { command: 'mute', description: 'Mute a user, e.g. /mute 10m (reply)' },
+    { command: 'unmute', description: 'Unmute a user (reply)' },
+    { command: 'kick', description: 'Kick a user (reply)' },
+    { command: 'ban', description: 'Ban a user (reply)' },
+    { command: 'unban', description: 'Unban: /unban user_id' },
+    { command: 'setwelcome', description: 'Set welcome text' },
+    { command: 'poll', description: 'Quick poll: /poll Q?; A; B' },
+    { command: 'stats', description: 'Moderation stats' },
+    { command: 'addbanword', description: 'Add ban word(s)' },
+    { command: 'banwords', description: 'List ban words' },
+    { command: 'addlink', description: 'Whitelist a domain' },
+    { command: 'links', description: 'List whitelisted domains' },
+    { command: 'allowlinks', description: 'Links on/off' },
+    { command: 'schedule', description: 'Recurring post (reply to media)' },
+    { command: 'schedules', description: 'List recurring posts' },
+    { command: 'unschedule', description: 'Cancel a recurring post' },
+  ]).catch((e) => console.warn('setMyCommands failed:', e.message));
   bot.start({ onStart: () => console.log('bot polling started') }).catch((e) => console.error('poll start failed:', e.message));
 } else {
   console.warn('BOT_TOKEN missing — API only. Copy .env.example to .env.');
