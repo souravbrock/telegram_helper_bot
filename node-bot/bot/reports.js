@@ -4,6 +4,7 @@
  * /rules | /setrules | /clearrules — group rules, DM-first delivery.
  * /setflood <n|off> | /setfloodmode warn|mute|kick|ban | /flood — status. */
 const { InlineKeyboard } = require('grammy');
+const { grid } = require('../lib/kb');
 const store = require('../lib/store');
 const { record } = require('../lib/modlog');
 
@@ -74,12 +75,13 @@ function register(bot) {
         (reason ? `Reason: ${reason}\n` : '') +
         `Message: ${excerpt(target)}\n` +
         `<a href="${msgLink(ctx.chat.id, target.message_id)}">Jump to message</a>`;
-      const kb = new InlineKeyboard()
-        .text('🗑 Delete', `rep:del:${ctx.chat.id}:${target.message_id}`)
-        .text('🔇 Mute', `rep:mute:${ctx.chat.id}:${target.from.id}`).row()
-        .text('👢 Kick', `rep:kick:${ctx.chat.id}:${target.from.id}`)
-        .text('⛔️ Ban', `rep:ban:${ctx.chat.id}:${target.from.id}`).row()
-        .text('✅ Done', `rep:done:${ctx.chat.id}:0`);
+      const kb = grid([
+        { t: '🗑 Delete', d: `rep:del:${ctx.chat.id}:${target.message_id}` },
+        { t: '🔇 Mute', d: `rep:mute:${ctx.chat.id}:${target.from.id}` },
+        { t: '👢 Kick', d: `rep:kick:${ctx.chat.id}:${target.from.id}` },
+        { t: '⛔️ Ban', d: `rep:ban:${ctx.chat.id}:${target.from.id}` },
+        { t: '✅ Done', d: `rep:done:${ctx.chat.id}:0` },
+      ], 2);
 
       let posted = false;
       if (channel) {

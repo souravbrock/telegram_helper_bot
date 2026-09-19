@@ -1,7 +1,7 @@
 'use strict';
 /* Rose-style DM home: intro + module grid, each opening its own help.
  * Wired into /start (DM). Group /start stays short (points to /menu). */
-const { InlineKeyboard } = require('grammy');
+const { grid } = require('../lib/kb');
 
 const INTRO =
   `Hey! I'm <b>Group Helper</b>, keeping order in your groups.\n` +
@@ -54,15 +54,10 @@ const MOD_PANELS = {
 const PANEL_LABEL = { filters: 'Ban words', links: 'Links', notes: 'Notes', filtersv: 'Filters', sched: 'Schedules', settings: 'Settings', stats: 'Stats' };
 
 function gridKb() {
-  const kb = new InlineKeyboard();
   const keys = Object.keys(MODULES);
-  keys.forEach((k, i) => {
-    kb.text(k, `help:${k}`);
-    if (i % 3 === 2) kb.row();
-  });
-  if (keys.length % 3 !== 0) kb.row();
-  kb.text('🔗 My Groups', 'conn:list').text('⏳ Roadmap', 'help:ROADMAP').row();
-  return kb;
+  const items = keys.map((k) => ({ t: k, d: `help:${k}` }));
+  items.push({ row: true }, { t: '🔗 My Groups', d: 'conn:list' }, { t: '⏳ Roadmap', d: 'help:ROADMAP' });
+  return grid(items, 3);
 }
 
 function home() {
@@ -86,9 +81,8 @@ function register(bot) {
         await ctx.answerCallbackQuery({ text: 'Unknown module' });
         return;
       }
-      const kb = new InlineKeyboard();
-      for (const p of MOD_PANELS[key] || []) kb.text(`➡️ ${PANEL_LABEL[p] || p}`, `menu:${p}`).row();
-      kb.text('⬅️ Modules', 'help:HOME');
+      const shortcuts = (MOD_PANELS[key] || []).map((p) => ({ t: `➡️ ${PANEL_LABEL[p] || p}`, d: `menu:${p}` }));
+      const kb = grid([...shortcuts, { row: true }, { t: '⬅️ Modules', d: 'help:HOME' }], 2);
       try {
         await ctx.editMessageText(body, { parse_mode: 'HTML', reply_markup: kb });
       } catch { /* unchanged */ }

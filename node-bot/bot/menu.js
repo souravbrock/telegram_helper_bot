@@ -3,6 +3,7 @@
  * Text inputs (add word, set welcome) work by replying to the prompt message.
  * All slash commands keep working — the menu is a friendlier front for them. */
 const { InlineKeyboard } = require('grammy');
+const { grid, withNav } = require('../lib/kb');
 const store = require('../lib/store');
 const { parseCsv, normalizeDomain, setToCsv } = require('../lib/lists');
 const { notesView, filtersView: keywordFiltersView } = require('./notes');
@@ -50,28 +51,20 @@ async function openPanel(ctx, chatId) {
 
 function kbMain() {
   // Rose-style module grid; each module opens help + shortcut buttons.
-  const kb = new InlineKeyboard();
-  const keys = Object.keys(MODULES);
-  keys.forEach((k, i) => {
-    kb.text(k, `menu:mod:${k}`);
-    if (i % 3 === 2) kb.row();
-  });
-  if (keys.length % 3 !== 0) kb.row();
-  kb.text('📊 Stats', 'menu:stats').text('🗑 Close', 'menu:close');
-  return kb;
+  const items = Object.keys(MODULES).map((k) => ({ t: k, d: `menu:mod:${k}` }));
+  items.push({ row: true }, { t: '📊 Stats', d: 'menu:stats' }, { t: '🗑 Close', d: 'menu:close' });
+  return grid(items, 3);
 }
 
 /* Which existing panel views each module shortcuts to (shared map). */
 
 function modView(name) {
-  const kb = new InlineKeyboard();
-  for (const p of MOD_PANELS[name] || []) kb.text(`➡️ ${PANEL_LABEL[p] || p}`, `menu:${p}`).row();
-  kb.text('⬅️ Modules', 'menu:main').text('🗑 Close', 'menu:close');
-  return { text: `${MODULES[name] || name}`, kb };
+  const items = (MOD_PANELS[name] || []).map((p) => ({ t: `➡️ ${PANEL_LABEL[p] || p}`, d: `menu:${p}` }));
+  return { text: `${MODULES[name] || name}`, kb: withNav(items, 'menu:main') };
 }
 
 function kbBack(to) {
-  return new InlineKeyboard().text('⬅️ Back', `menu:${to}`).text('🗑 Close', 'menu:close');
+  return grid([{ t: '⬅️ Back', d: `menu:${to}` }, { t: '🗑 Close', d: 'menu:close' }], 2);
 }
 
 async function show(ctx, text, kb) {
@@ -84,27 +77,27 @@ async function show(ctx, text, kb) {
 
 function filtersView(chatId) {
   const cfg = store.getChat(chatId, defs());
-  const kb = new InlineKeyboard().text('➕ Add word', 'menu:ban_add').row();
-  for (const w of parseCsv(cfg.blacklist_words)) kb.text(`❌ ${w}`, `menu:ban_del:${w}`).row();
-  kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
+  const items = [{ t: '➕ Add word', d: 'menu:ban_add' }, { row: true }];
+  for (const w of parseCsv(cfg.blacklist_words)) items.push({ t: `❌ ${w}`.slice(0, 60), d: `menu:ban_del:${w}` });
   const list = setToCsv(parseCsv(cfg.blacklist_words)) || '(none)';
-  return { text: `🚫 <b>Ban words</b>\n${list}\n\nTap ❌ to remove, or add new ones.`, kb };
+  return { text: `🚫 <b>Ban words</b>\n${list}\n\nTap ❌ to remove, or add new ones.`, kb: withNav(items, 'menu:main') };
 }
 
 function linksView(chatId) {
   const cfg = store.getChat(chatId, defs());
-  const kb = new InlineKeyboard()
-    .text('➕ Add domain', 'menu:link_add')
-    .text(`Links: ${cfg.allow_links ? 'ON' : 'OFF'}`, `menu:allow:${cfg.allow_links ? 'off' : 'on'}`).row();
-  for (const d of parseCsv(cfg.whitelist_domains)) kb.text(`❌ ${d}`, `menu:link_del:${d}`).row();
-  kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
+  const items = [
+    { t: '➕ Add domain', d: 'menu:link_add' },
+    { t: `Links: ${cfg.allow_links ? 'ON' : 'OFF'}`, d: `menu:allow:${cfg.allow_links ? 'off' : 'on'}` },
+    { row: true },
+  ];
+  for (const d of parseCsv(cfg.whitelist_domains)) items.push({ t: `❌ ${d}`.slice(0, 60), d: `menu:link_del:${d}` });
   const list = setToCsv(parseCsv(cfg.whitelist_domains)) || '(none)';
   const env = (process.env.WHITELIST_DOMAINS || '').trim();
   return {
     text: `🔗 <b>Link whitelist</b>\nGroup: ${list}\n` +
       (env ? `Global: ${env}\n` : '') +
       `Master switch: <b>${cfg.allow_links ? 'ON — all links allowed' : 'OFF — only whitelisted'}</b>`,
-    kb,
+    kb: withNav(items, 'menu:main'),
   };
 }
 
@@ -115,21 +108,25 @@ function settingsView(chatId) {
   const floodLabel = cfg.flood_limit === 0 ? 'OFF' : (cfg.flood_limit ?? `${envN} (env)`);
   const modes = ['warn', 'mute', 'kick', 'ban'];
   const nextMode = modes[(modes.indexOf(cfg.flood_mode || 'warn') + 1) % modes.length];
-  const kb = new InlineKeyboard()
-    .text(`Captcha: ${cfg.captcha_enabled ? 'ON' : 'OFF'}`, `menu:captcha:${cfg.captcha_enabled ? '0' : '1'}`)
-    .text(`Reports: ${Number(cfg.reports_enabled ?? 1) ? 'ON' : 'OFF'}`, `menu:reports:${Number(cfg.reports_enabled ?? 1) ? '0' : '1'}`).row()
-    .text('➖ Warns', `menu:warn:${Math.max(1, (cfg.warn_limit || 3) - 1)}`)
-    .text(`Limit: ${cfg.warn_limit || 3}`, 'menu:noop')
-    .text('➕ Warns', `menu:warn:${Math.min(10, (cfg.warn_limit || 3) + 1)}`).row()
-    .text(`🌊 Flood: ${floodLabel}`, 'menu:noop')
-    .text('➖', `menu:floodlim:${Math.max(0, cur - 1)}`)
-    .text('➕', `menu:floodlim:${cur === 0 ? envN : Math.min(30, cur + 1)}`).row()
-    .text(`Flood→${(cfg.flood_mode || 'warn').toUpperCase()} (tap: ${nextMode})`, `menu:floodmode:${nextMode}`).row()
-    .text('✏️ Set welcome', 'menu:welcome_set')
-    .text('✏️ Set rules', 'menu:rules_set').row()
-    .text(`🛡 AntiRaid: ${Number(cfg.antiraid_enabled ?? 0) ? 'ON' : 'OFF'}`, `menu:antiraid:${Number(cfg.antiraid_enabled ?? 0) ? '0' : '1'}`)
-    .text(`Raid→${(cfg.antiraid_mode || 'kick').toUpperCase()}`, `menu:raidmode:${(cfg.antiraid_mode || 'kick') === 'kick' ? 'ban' : 'kick'}`).row()
-    .text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
+  const kb = grid([
+    { t: `Captcha: ${cfg.captcha_enabled ? 'ON' : 'OFF'}`, d: `menu:captcha:${cfg.captcha_enabled ? '0' : '1'}` },
+    { t: `Reports: ${Number(cfg.reports_enabled ?? 1) ? 'ON' : 'OFF'}`, d: `menu:reports:${Number(cfg.reports_enabled ?? 1) ? '0' : '1'}` },
+    { t: '➖ Warns', d: `menu:warn:${Math.max(1, (cfg.warn_limit || 3) - 1)}` },
+    { t: `Limit: ${cfg.warn_limit || 3}`, d: 'menu:noop' },
+    { t: '➕ Warns', d: `menu:warn:${Math.min(10, (cfg.warn_limit || 3) + 1)}` },
+    { t: '🌊 Flood: ' + floodLabel, d: 'menu:noop' },
+    { t: '➖', d: `menu:floodlim:${Math.max(0, cur - 1)}` },
+    { t: '➕', d: `menu:floodlim:${cur === 0 ? envN : Math.min(30, cur + 1)}` },
+    { t: `Flood→${(cfg.flood_mode || 'warn').toUpperCase()} (tap: ${nextMode})`, d: `menu:floodmode:${nextMode}` },
+    { row: true },
+    { t: '✏️ Set welcome', d: 'menu:welcome_set' },
+    { t: '✏️ Set rules', d: 'menu:rules_set' },
+    { t: `🛡 AntiRaid: ${Number(cfg.antiraid_enabled ?? 0) ? 'ON' : 'OFF'}`, d: `menu:antiraid:${Number(cfg.antiraid_enabled ?? 0) ? '0' : '1'}` },
+    { t: `Raid→${(cfg.antiraid_mode || 'kick').toUpperCase()}`, d: `menu:raidmode:${(cfg.antiraid_mode || 'kick') === 'kick' ? 'ban' : 'kick'}` },
+    { row: true },
+    { t: '⬅️ Back', d: 'menu:main' },
+    { t: '🗑 Close', d: 'menu:close' },
+  ], 3);
   return {
     text: `⚙️ <b>Settings</b>\nWelcome: <i>${(cfg.welcome_text || '').slice(0, 80)}</i>\n` +
       `Rules: <i>${((cfg.rules_text || '').slice(0, 80)) || '(none)'}</i>`,
@@ -142,9 +139,9 @@ function schedView(chatId) {
   const tz = typeof cfg.tz_offset === 'number' ? cfg.tz_offset : parseInt(process.env.DEFAULT_TZ_MIN || '330', 10);
   const sign = tz < 0 ? '-' : '+';
   const tzLabel = `${sign}${String(Math.floor(Math.abs(tz) / 60)).padStart(2, '0')}:${String(Math.abs(tz) % 60).padStart(2, '0')}`;
-  const kb = new InlineKeyboard().text('➕ New guided', 'sch:new').row();
-  for (const s of cfg.schedules) kb.text(`❌ ${s.id}`, `menu:sched_del:${s.id}`).row();
-  kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
+  const items = [{ t: '➕ New guided', d: 'sch:new' }, { row: true }];
+  for (const s of cfg.schedules) items.push({ t: `❌ ${s.id}`.slice(0, 60), d: `menu:sched_del:${s.id}` });
+  const kb = withNav(items, 'menu:main');
   const lines = cfg.schedules.length
     ? cfg.schedules.map((s) => `<code>${s.id}</code> every ${s.every}s — ${s.srcMsg ? `media #${s.srcMsg}` : (s.text || '').slice(0, 30)}`).join('\n')
     : '(none)';

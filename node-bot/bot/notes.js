@@ -9,6 +9,7 @@
  * Management = admins; recall/list = everyone. Registered AFTER moderation
  * so deleted spam never triggers a filter reply. */
 const { InlineKeyboard } = require('grammy');
+const { grid } = require('../lib/kb');
 const store = require('../lib/store');
 const antispam = require('../lib/antispam');
 const { parseCsv } = require('../lib/lists');
@@ -97,21 +98,22 @@ function describe(c) {
 
 function notesView(chatId) {
   const names = Object.keys(store.getNotes(chatId)).sort();
-  const kb = new InlineKeyboard();
-  for (const n of names) kb.text(`❌ #${n}`, `menu:note_del:${n}`).row();
-  if (names.length) kb.text('🗑 Clear ALL', 'menu:notes_wipe').row();
-  kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
+  const items = [];
+  for (const n of names) items.push({ t: `❌ #${n}`.slice(0, 60), d: `menu:note_del:${n}` });
+  if (names.length) {
+    items.push({ row: true }, { t: '🗑 Clear ALL', d: 'menu:notes_wipe' });
+  }
+  const kb = withNav(items, 'menu:main');
   return { text: `📝 <b>Notes</b> (${names.length})\n${names.map((n) => `#${n}`).join(' ') || '(none — /save name while replying)'}`, kb };
 }
 
 function filtersView(chatId) {
   const all = store.getFilters(chatId);
   const kws = Object.keys(all).sort();
-  const kb = new InlineKeyboard();
-  kb.text('➕ New smart reply', 'ar:new').row();
-  for (const k of kws) kb.text(`❌ ${k}${all[k]?.cs ? ' [Aa]' : ''}`.slice(0, 60), `menu:filter_del:${k.slice(0, 47)}`).row();
-  if (kws.length) kb.text('🗑 Stop ALL', 'menu:filters_wipe').row();
-  kb.text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
+  const items = [{ t: '➕ New smart reply', d: 'ar:new' }, { row: true }];
+  for (const k of kws) items.push({ t: `❌ ${k}${all[k]?.cs ? ' [Aa]' : ''}`.slice(0, 60), d: `menu:filter_del:${k.slice(0, 47)}` });
+  if (kws.length) items.push({ row: true }, { t: '🗑 Stop ALL', d: 'menu:filters_wipe' });
+  const kb = withNav(items, 'menu:main');
   return { text: `💬 <b>Filters</b> (${kws.length})\n${kws.map((k) => `<code>${k}</code>${all[k]?.cs ? ' [case-sensitive]' : ''}`).join(' ') || '(none — /filter keyword + reply, or ➕ New smart)'}`, kb };
 }
 
@@ -174,7 +176,10 @@ function register(bot) {
   }));
 
   bot.command('clearall', guard(async (ctx) => {
-    const kb = new InlineKeyboard().text('✅ Yes, delete all', 'menu:notes_wipe_yes').text('❌ Cancel', 'menu:notes_wipe_no');
+    const kb = grid([
+      { t: '✅ Yes, delete all', d: 'menu:notes_wipe_yes' },
+      { t: '❌ Cancel', d: 'menu:notes_wipe_no' },
+    ], 2);
     await ctx.reply('Delete <b>ALL</b> notes in this group?', { parse_mode: 'HTML', reply_markup: kb });
   }));
 
@@ -210,7 +215,10 @@ function register(bot) {
   }));
 
   bot.command('stopall', guard(async (ctx) => {
-    const kb = new InlineKeyboard().text('✅ Yes, stop all', 'menu:filters_wipe_yes').text('❌ Cancel', 'menu:filters_wipe_no');
+    const kb = grid([
+      { t: '✅ Yes, stop all', d: 'menu:filters_wipe_yes' },
+      { t: '❌ Cancel', d: 'menu:filters_wipe_no' },
+    ], 2);
     await ctx.reply('Remove <b>ALL</b> filters in this group?', { parse_mode: 'HTML', reply_markup: kb });
   }));
 
@@ -360,9 +368,10 @@ function register(bot) {
         if (!kw) { await ctx.reply('Send the trigger phrase as text.'); return; }
         entry.kw = kw; // case decided next step; lowercased then if insensitive
         entry.step = 'case';
-        const kb = new InlineKeyboard()
-          .text('🔠 Aa — exact case', 'ar:cs:1')
-          .text('🔡 aa — any case', 'ar:cs:0');
+        const kb = grid([
+          { t: '🔠 Aa — exact case', d: 'ar:cs:1' },
+          { t: '🔡 aa — any case', d: 'ar:cs:0' },
+        ], 2);
         await wizAsk(ctx, entry, `💬 <b>Smart reply 2/3 — matching</b> for <code>${entry.kw}</code>.\nShould <code>${entry.kw}</code> match only this exact case?`, kb);
         try { await ctx.deleteMessage(); } catch {}
         return;
@@ -416,10 +425,16 @@ function register(bot) {
         await show(ctx, v.text, v.kb);
         await answer('Filter removed');
       } else if (data === 'menu:notes_wipe') {
-        const kb = new InlineKeyboard().text('✅ Yes', 'menu:notes_wipe_yes').text('❌ No', 'menu:notes_back');
+        const kb = grid([
+          { t: '✅ Yes', d: 'menu:notes_wipe_yes' },
+          { t: '❌ No', d: 'menu:notes_back' },
+        ], 2);
         await show(ctx, 'Delete <b>ALL</b> notes?', kb);
       } else if (data === 'menu:filters_wipe') {
-        const kb = new InlineKeyboard().text('✅ Yes', 'menu:filters_wipe_yes').text('❌ No', 'menu:filters_back');
+        const kb = grid([
+          { t: '✅ Yes', d: 'menu:filters_wipe_yes' },
+          { t: '❌ No', d: 'menu:filters_back' },
+        ], 2);
         await show(ctx, 'Remove <b>ALL</b> filters?', kb);
       } else if (data === 'menu:notes_back') {
         const v = notesView(chatId);
