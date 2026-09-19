@@ -6,7 +6,7 @@ const { InlineKeyboard } = require('grammy');
 const store = require('../lib/store');
 const { parseCsv, normalizeDomain, setToCsv } = require('../lib/lists');
 const { notesView, filtersView: keywordFiltersView } = require('./notes');
-const { MODULES } = require('./helpmenu');
+const { MODULES, MOD_PANELS, PANEL_LABEL } = require('./helpmenu');
 
 const pendingInput = new Map(); // "chat:user" -> { promptId, action, at }
 
@@ -61,24 +61,7 @@ function kbMain() {
   return kb;
 }
 
-/* Which existing panel views each module shortcuts to. */
-const MOD_PANELS = {
-  Blocklists: ['filters', 'links'],
-  Notes: ['notes'],
-  Filters: ['filtersv'],
-  Schedules: ['sched'],
-  Antiflood: ['settings'],
-  Captcha: ['settings'],
-  Greetings: ['settings'],
-  Rules: ['settings'],
-  Reports: ['settings'],
-  Warnings: ['settings'],
-  Log: ['stats'],
-  Autoreply: ['filtersv'],
-  Bans: [], Admin: [], Pin: [], Purges: [], AntiRaid: [],
-};
-
-const PANEL_LABEL = { filters: 'Ban words', links: 'Links', notes: 'Notes', filtersv: 'Filters', sched: 'Schedules', settings: 'Settings', stats: 'Stats' };
+/* Which existing panel views each module shortcuts to (shared map). */
 
 function modView(name) {
   const kb = new InlineKeyboard();

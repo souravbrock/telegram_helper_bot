@@ -257,13 +257,18 @@ function register(bot) {
   }
 
   bot.command('autoreply', async (ctx) => {
-    const chatId = wizTarget(ctx);
-    if (!chatId) return ctx.reply('Connect a group first: /start → My Groups.');
-    const admin = ctx.chat?.type === 'private'
-      ? await isAdminIn(bot, chatId, ctx.from.id)
-      : await isAdmin(ctx);
-    if (!admin) return ctx.reply('Only admins can use this.');
-    await arStart(ctx, chatId);
+    try {
+      const chatId = wizTarget(ctx);
+      if (!chatId) return ctx.reply('Connect a group first: /start → My Groups, or /connect in the group.');
+      const admin = ctx.chat?.type === 'private'
+        ? await isAdminIn(bot, chatId, ctx.from.id)
+        : await isAdmin(ctx);
+      if (!admin) return ctx.reply('Only admins can use this.');
+      await arStart(ctx, chatId);
+    } catch (err) {
+      console.error('autoreply start error:', err);
+      try { await ctx.reply('Could not start the wizard — try again.'); } catch {}
+    }
   });
 
   bot.callbackQuery(/^ar:/, async (ctx) => {

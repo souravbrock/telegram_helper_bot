@@ -32,6 +32,27 @@ const MODULES = {
 
 const ROADMAP = `<b>On the roadmap</b>\nApproval mode • Connections (manage from DM) • Federations (cross-group bans) • Locks (media/sticker locks) • Topics • Import/Export • Languages\n\nTell the owner which to build next!`;
 
+/* Which control-panel views each module shortcuts to (shared with menu.js).
+ * Buttons emit menu:<view> callbacks, which resolve DM connections. */
+const MOD_PANELS = {
+  Blocklists: ['filters', 'links'],
+  Notes: ['notes'],
+  Filters: ['filtersv'],
+  Autoreply: ['filtersv'],
+  Schedules: ['sched'],
+  Antiflood: ['settings'],
+  Captcha: ['settings'],
+  Greetings: ['settings'],
+  Rules: ['settings'],
+  Reports: ['settings'],
+  Warnings: ['settings'],
+  AntiRaid: ['settings'],
+  Log: ['stats'],
+  Bans: [], Admin: [], Pin: [], Purges: [],
+};
+
+const PANEL_LABEL = { filters: 'Ban words', links: 'Links', notes: 'Notes', filtersv: 'Filters', sched: 'Schedules', settings: 'Settings', stats: 'Stats' };
+
 function gridKb() {
   const kb = new InlineKeyboard();
   const keys = Object.keys(MODULES);
@@ -65,7 +86,9 @@ function register(bot) {
         await ctx.answerCallbackQuery({ text: 'Unknown module' });
         return;
       }
-      const kb = new InlineKeyboard().text('⬅️ Modules', 'help:HOME');
+      const kb = new InlineKeyboard();
+      for (const p of MOD_PANELS[key] || []) kb.text(`➡️ ${PANEL_LABEL[p] || p}`, `menu:${p}`).row();
+      kb.text('⬅️ Modules', 'help:HOME');
       try {
         await ctx.editMessageText(body, { parse_mode: 'HTML', reply_markup: kb });
       } catch { /* unchanged */ }
@@ -76,4 +99,4 @@ function register(bot) {
   });
 }
 
-module.exports = { register, home, MODULES };
+module.exports = { register, home, MODULES, MOD_PANELS, PANEL_LABEL };
