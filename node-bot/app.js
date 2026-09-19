@@ -17,6 +17,7 @@ const moderation = require('./bot/moderation');
 const captcha = require('./bot/captcha');
 const admin = require('./bot/admin');
 const menu = require('./bot/menu');
+const antiraid = require('./bot/antiraid');
 const scheduler = require('./bot/scheduler');
 const notes = require('./bot/notes');
 const reports = require('./bot/reports');
@@ -66,6 +67,7 @@ if (TOKEN) {
   bot.catch((err) => console.error('bot error:', err));
   admin.register(bot);
   menu.register(bot);
+  antiraid.register(bot); // before captcha: raids skip verification
   captcha.register(bot);
   moderation.register(bot);
   scheduler.register(bot);
@@ -117,6 +119,9 @@ if (TOKEN) {
     { command: 'promote', description: 'Promote (reply)' },
     { command: 'demote', description: 'Demote (reply)' },
     { command: 'adminlist', description: 'List admins' },
+    { command: 'antiraid', description: 'Raid lockdown on/off/status' },
+    { command: 'setraidlimit', description: 'Raid join limit' },
+    { command: 'setraidmode', description: 'Raid action kick/ban' },
   ]).catch((e) => console.warn('setMyCommands failed:', e.message));
   bot.start({ onStart: () => console.log('bot polling started') }).catch((e) => console.error('poll start failed:', e.message));
 } else {

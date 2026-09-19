@@ -13,6 +13,7 @@ const INTRO =
 const MODULES = {
   Admin: `<b>Admin</b>\n/promote (reply) — grant basic admin\n/demote (reply) — strip admin\n/adminlist — owners + admins\n/pin (reply) [notify] • /unpin\n/purge (reply) — delete up to 100 after it`,
   Antiflood: `<b>Antiflood</b>\n/flood — status\n/setflood 8|off — msgs per 10s\n/setfloodmode warn|mute|kick|ban — direct action on flood (warn = normal escalation)`,
+  AntiRaid: `<b>AntiRaid</b> — join-burst lockdown\n/antiraid on|off|status\n/setraidlimit 5 — joins per 60s that trip it\n/setraidmode kick|ban • /setraidduration 1h\nTripped: newcomers auto-removed for the duration, announced + logged. Toggle in /menu → Settings.`,
   Bans: `<b>Bans</b>\n/ban (reply) • /tban 2d (reply) • /unban id\n/kick (reply)\n/mute 10m (reply) • /tmute 1d (reply) • /unmute\nDurations: s/m/h/d/w`,
   Blocklists: `<b>Blocklists</b> — deleted + warned on sight\nBan words: /addbanword a,b • /rmbanword a • /banwords\nLink whitelist: /addlink domain • /rmlink • /links\nMaster switch: /allowlinks on|off\nAdmins/owner always bypass. URLs never repeat in public warns.`,
   Captcha: `<b>CAPTCHA</b> — 1-to-1 DM verification\nNew members get only a Verify button in the group; the math quiz happens in private. Timeout kicks + cleans up. Join/leave traces and bot notices auto-expire for privacy. Toggle in /menu → Settings.`,
@@ -28,7 +29,7 @@ const MODULES = {
   Warnings: `<b>Warnings</b>\n/warn (reply) • /unwarn • /warns\nLimit in /menu → Settings (mute at limit, kick at +1, ban at ×2).\nPublic messages never repeat removed links.`,
 };
 
-const ROADMAP = `<b>On the roadmap</b>\nAntiRaid • Approval mode • Connections (manage from DM) • Federations (cross-group bans) • Locks (media/sticker locks) • Topics • Import/Export • Languages\n\nTell the owner which to build next!`;
+const ROADMAP = `<b>On the roadmap</b>\nApproval mode • Connections (manage from DM) • Federations (cross-group bans) • Locks (media/sticker locks) • Topics • Import/Export • Languages\n\nTell the owner which to build next!`;
 
 function gridKb() {
   const kb = new InlineKeyboard();

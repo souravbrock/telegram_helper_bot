@@ -44,7 +44,8 @@ function register(bot) {
     '<b>Recurring posts</b>\n/schedule 6h text (or reply to media)\n/schedules • /unschedule id\n\n' +
     '<b>Notes & filters</b>\n/save name (reply) • #name • /notes • /clear\n/filter kw reply • /filters • /stop\n\n' +
     '<b>Community</b>\n/report (reply) • /rules • /setrules • /reports on|off\n/flood • /setflood n • /setfloodmode\n\n' +
-    '<b>Toolkit</b>\n/purge (reply) • /pin • /unpin\n/tmute 1d • /tban 7d • /promote • /demote • /adminlist',
+    '<b>Toolkit</b>\n/purge (reply) • /pin • /unpin\n/tmute 1d • /tban 7d • /promote • /demote • /adminlist\n' +
+    '/antiraid on|off • /setraidlimit • /setraidmode',
     { parse_mode: 'HTML' }
   ));
 

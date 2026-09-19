@@ -87,6 +87,12 @@ const CHAT_DEFAULTS = {
   reports_enabled: 1, // /reports on|off
   flood_limit: null, // null = env default; 0 = off; n = custom count
   flood_mode: 'warn', // warn | mute | kick | ban (applied on flood)
+  antiraid_enabled: 0, // /antiraid on|off
+  antiraid_limit: 5, // joins per window that trips lockdown
+  antiraid_window: 60, // seconds
+  antiraid_mode: 'kick', // kick | ban during lockdown
+  antiraid_duration: 3600, // lockdown seconds
+  antiraid_until: 0, // timestamp ms; > now = lockdown active
 };
 
 function getChat(chatId, defaults) {

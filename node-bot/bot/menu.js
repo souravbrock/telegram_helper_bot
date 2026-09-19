@@ -90,6 +90,8 @@ function settingsView(chatId) {
     .text(`Flood→${(cfg.flood_mode || 'warn').toUpperCase()} (tap: ${nextMode})`, `menu:floodmode:${nextMode}`).row()
     .text('✏️ Set welcome', 'menu:welcome_set')
     .text('✏️ Set rules', 'menu:rules_set').row()
+    .text(`🛡 AntiRaid: ${Number(cfg.antiraid_enabled ?? 0) ? 'ON' : 'OFF'}`, `menu:antiraid:${Number(cfg.antiraid_enabled ?? 0) ? '0' : '1'}`)
+    .text(`Raid→${(cfg.antiraid_mode || 'kick').toUpperCase()}`, `menu:raidmode:${(cfg.antiraid_mode || 'kick') === 'kick' ? 'ban' : 'kick'}`).row()
     .text('⬅️ Back', 'menu:main').text('🗑 Close', 'menu:close');
   return {
     text: `⚙️ <b>Settings</b>\nWelcome: <i>${(cfg.welcome_text || '').slice(0, 80)}</i>\n` +
@@ -201,6 +203,21 @@ function register(bot) {
         const v = settingsView(chatId);
         await show(ctx, v.text, v.kb);
         await answer(`Flood action ${mode.toUpperCase()}`);
+        return;
+      }
+      if (view === 'antiraid') {
+        store.saveChat(chatId, { antiraid_enabled: arg === '1' ? 1 : 0, antiraid_until: 0 }, defs());
+        const v = settingsView(chatId);
+        await show(ctx, v.text, v.kb);
+        await answer(`AntiRaid ${arg === '1' ? 'ARMED' : 'OFF'}`);
+        return;
+      }
+      if (view === 'raidmode') {
+        const mode = arg === 'ban' ? 'ban' : 'kick';
+        store.saveChat(chatId, { antiraid_mode: mode }, defs());
+        const v = settingsView(chatId);
+        await show(ctx, v.text, v.kb);
+        await answer(`Raid action ${mode.toUpperCase()}`);
         return;
       }
       if (view === 'ban_del') {
