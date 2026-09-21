@@ -31,21 +31,28 @@ const TOKEN = (process.env.BOT_TOKEN || '').trim();
 const UNDER_PASSENGER = Boolean(process.env.PASSENGER_APP_ENV || process.env.PASSENGER_SPAWN_WORK_DIR);
 
 const app = express();
-app.use(express.json());
 
-app.get('/health', (_req, res) => res.json({ ok: true, env: process.env.ENV || 'production' }));
-app.get('/api/logs', (req, res) => {
+// Base path: '' on Render (root), '/api' on cPanel (sub-URI app).
+// All routes live on `core`; it is mounted once at BASE.
+let BASE = (process.env.APP_BASE_PATH || '').trim();
+if (BASE && !BASE.startsWith('/')) BASE = '/' + BASE;
+if (BASE === '/') BASE = '';
+const core = express();
+core.use(express.json());
+
+core.get('/health', (_req, res) => res.json({ ok: true, env: process.env.ENV || 'production', base: BASE || '/' }));
+core.get('/api/logs', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
   res.json({ items: store.recentActions(limit) });
 });
-app.get('/api/stats', (_req, res) => {
+core.get('/api/stats', (req, res) => {
   const counts = store.actionCounts();
   res.json({ counts, total: Object.values(counts).reduce((a, b) => a + b, 0) });
 });
-app.get('/api/settings/:chatId', (req, res) => {
+core.get('/api/settings/:chatId', (req, res) => {
   res.json(store.getChat(req.params.chatId, { warnLimit: 3, allowLinks: false }));
 });
-app.post('/api/settings/:chatId', (req, res) => {
+core.post('/api/settings/:chatId', (req, res) => {
   // TODO: require Telegram WebApp initData auth + admin check before public use.
   const patch = {};
   const b = req.body || {};
@@ -59,8 +66,10 @@ app.post('/api/settings/:chatId', (req, res) => {
 });
 
 // Mini-App dashboard (reuse Python static)
-app.use('/miniapp', express.static(path.join(__dirname, '..', 'app', 'web', 'miniapp')));
-app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'app', 'web', 'miniapp', 'index.html')));
+core.use('/miniapp', express.static(path.join(__dirname, '..', 'app', 'web', 'miniapp')));
+core.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'app', 'web', 'miniapp', 'index.html')));
+
+app.use(BASE || '/', core);
 
 let bot = null;
 if (TOKEN) {
