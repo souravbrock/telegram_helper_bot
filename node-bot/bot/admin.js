@@ -33,7 +33,7 @@ function parseDur(s) {
 function register(bot) {
   // NOTE: /start lives in captcha.js (DM verification deep links). Keep 'help' here only.
   bot.command(['help'], (ctx) => ctx.reply(
-    '🤖 <b>Group Assistant (Node MVP)</b>\n\n' +
+    '🤖 <b>Jarvis</b>\n\n' +
     'Auto-moderation: spam links/forwards/flood deleted, warn→mute→kick→ban.\n' +
     'Captcha verification for new members.\n\n' +
     'Tip: /menu opens the button control panel.\n\n' +

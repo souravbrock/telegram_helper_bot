@@ -4,7 +4,7 @@
 const { grid } = require('../lib/kb');
 
 const INTRO =
-  `Hey! I'm <b>Group Helper</b>, keeping order in your groups.\n` +
+  `Hey! I'm <b>Jarvis</b>, keeping order in your groups.\n` +
   `I do warns, flood control, link/word filters, notes, keyword replies,\n` +
   `DM captcha verification, reports, rules, polls and scheduled posts.\n\n` +
   `Add me to a group as admin (delete + restrict rights), then /menu.\n\n` +
