@@ -9,7 +9,7 @@
  * Management = admins; recall/list = everyone. Registered AFTER moderation
  * so deleted spam never triggers a filter reply. */
 const { InlineKeyboard } = require('grammy');
-const { grid } = require('../lib/kb');
+const { grid, withNav } = require('../lib/kb');
 const store = require('../lib/store');
 const antispam = require('../lib/antispam');
 const { parseCsv } = require('../lib/lists');

@@ -359,4 +359,4 @@ function register(bot) {
   });
 }
 
-module.exports = { register, openPanel, isAdminChat };
+module.exports = { register, openPanel, isAdminChat, kbMain, modView, filtersView, linksView, settingsView, schedView };
