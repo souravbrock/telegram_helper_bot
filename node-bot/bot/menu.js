@@ -207,7 +207,7 @@ function register(bot) {
     setTimeout(async () => { try { await ctx.api.deleteMessage(ctx.chat.id, note.message_id); } catch {} }, 60 * 1000).unref?.();
   });
 
-  bot.callbackQuery(/^menu:/, async (ctx) => {
+  bot.callbackQuery(/^menu:/, async (ctx, next) => {
     try {
       const chatId = targetChat(ctx);
       if (!chatId) {
@@ -334,7 +334,9 @@ function register(bot) {
         await answer('Schedule removed');
         return;
       }
-      await answer('Unknown button');
+      // Not ours (note/filter deletes, wipe confirms live in notes.js):
+      // pass down the chain instead of swallowing the button.
+      return next();
     } catch (err) {
       try { await ctx.answerCallbackQuery({ text: String(err.message).slice(0, 180) }); } catch {}
     }
