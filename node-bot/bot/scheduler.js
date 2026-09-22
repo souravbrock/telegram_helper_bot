@@ -115,24 +115,40 @@ function targetChat(ctx) {
 }
 
 async function fire(api, chatId, s) {
+  if (s.replace && s.lastMsg) {
+    try { await api.deleteMessage(chatId, s.lastMsg); } catch {} // only this schedule's own previous post
+  }
   if (s.fileId) {
     // Wizard schedules: media by file_id survives source deletion.
-    await sendContent(api, chatId, { kind: s.kind || 'photo', fileId: s.fileId, text: s.text || s.caption || '' }, {}, '');
-    return;
+    return sendContent(api, chatId, { kind: s.kind || 'photo', fileId: s.fileId, text: s.text || s.caption || '' }, {}, '');
   }
   const from = s.srcChat || chatId;
   if (s.srcMsg) {
     const extra = s.caption ? { caption: s.caption } : {};
-    await api.copyMessage(chatId, from, s.srcMsg, extra);
-  } else {
-    await api.sendMessage(chatId, s.text);
+    return api.copyMessage(chatId, from, s.srcMsg, extra);
   }
+  return api.sendMessage(chatId, s.text);
 }
 
 function describe(s) {
-  if (s.fileId) return `${s.kind || 'media'}${s.text ? ' + caption' : ''}`;
-  if (s.srcMsg) return `media${s.caption ? ' (custom caption)' : ''}`;
-  return (s.text || '').slice(0, 40);
+  const rep = s.replace ? ' 🔁' : '';
+  if (s.fileId) return `${s.kind || 'media'}${s.text ? ' + caption' : ''}${rep}`;
+  if (s.srcMsg) return `media${s.caption ? ' (custom caption)' : ''}${rep}`;
+  return `${(s.text || '').slice(0, 40)}${rep}`;
+}
+
+function reviewText(entry) {
+  const s = { every: entry.every, next: entry.next, kind: entry.kind, fileId: entry.fileId, text: entry.text, replace: entry.replace ? 1 : 0 };
+  const tz = tzOffset(entry.chat);
+  return `📝 <b>Review</b>\n${describe(s)}\nEvery <b>${fmtDur(entry.every)}</b>, first run <b>${fmtLocal(entry.next, tz)}</b> (group time).\n` +
+    `Previous post on repost: <b>${entry.replace ? 'DELETE' : 'keep'}</b>\nSave?`;
+}
+
+function reviewKb(entry) {
+  const { InlineKeyboard } = require('grammy');
+  return new InlineKeyboard()
+    .text('✅ Save', 'sch:save').text('❌ Cancel', 'sch:cancel').row()
+    .text(entry.replace ? '🔁 Deleting previous ✓' : '🔁 Delete previous?', `sch:rep:${entry.replace ? '0' : '1'}`);
 }
 
 async function promptStep(ctx, entry, text, kb) {
@@ -290,10 +306,19 @@ function register(bot) {
         return;
       }
 
+      if (data.startsWith('sch:rep:')) {
+        if (!entry || entry.step !== 'review') { await answer(' '); return; }
+        entry.replace = data === 'sch:rep:1' ? 1 : 0;
+        entry.at = Date.now();
+        try { await ctx.editMessageText(reviewText(entry), { parse_mode: 'HTML', reply_markup: reviewKb(entry) }); } catch {}
+        await answer(entry.replace ? 'Previous post will be deleted' : 'Previous post will stay');
+        return;
+      }
+
       if (data === 'sch:save') {
         const cfg = store.getChat(entry.chat, defs());
         if (cfg.schedules.length >= 20) { await answer('Max 20 schedules — remove one first.', true); return; }
-        const s = { id: Date.now().toString(36), every: entry.every, next: entry.next, kind: entry.kind, fileId: entry.fileId, text: entry.text };
+        const s = { id: Date.now().toString(36), every: entry.every, next: entry.next, kind: entry.kind, fileId: entry.fileId, text: entry.text, replace: entry.replace ? 1 : 0 };
         store.setSchedules(entry.chat, [...cfg.schedules, s], defs());
         wiz.delete(k);
         try { await ctx.editMessageText(`✅ Scheduled <code>${s.id}</code>: ${describe(s)} every ${fmtDur(s.every)} from ${fmtLocal(s.next, tzOffset(entry.chat))}.`, { parse_mode: 'HTML' }); } catch {}
@@ -363,9 +388,8 @@ function register(bot) {
         while (nextTime <= now) nextTime += entry.every * 1000; // roll forward to a future slot
         entry.next = nextTime;
         entry.step = 'review';
-        const kb = new InlineKeyboard().text('✅ Save', 'sch:save').text('❌ Cancel', 'sch:cancel');
-        const s = { every: entry.every, next: entry.next, kind: entry.kind, fileId: entry.fileId, text: entry.text };
-        await promptStep(ctx, entry, `📝 <b>Review</b>\n${describe(s)}\nEvery <b>${fmtDur(entry.every)}</b>, first run <b>${fmtLocal(entry.next, tz)}</b> (group time).\nSave?`, kb);
+        entry.replace = 0;
+        await promptStep(ctx, entry, reviewText(entry), reviewKb(entry));
         try { await ctx.deleteMessage(); } catch {}
         return;
       }
@@ -376,18 +400,24 @@ function register(bot) {
   });
 
   // Ticks every 30s; due schedules fire and roll forward (no catch-up storms).
+  // Replace-mode schedules remember their last post to delete it next time.
+  async function doFire(chatId, s) {
+    try {
+      const m = await fire(bot.api, chatId, s);
+      const cfg = store.getChat(chatId, defs());
+      store.setSchedules(chatId, cfg.schedules.map((x) =>
+        x.id === s.id ? { ...x, next: Date.now() + x.every * 1000, lastMsg: m?.message_id } : x
+      ), defs());
+    } catch (e) { console.warn('schedule fire failed:', e.message); }
+  }
+
   setInterval(async () => {
     try {
       const now = Date.now();
       for (const { chatId, schedules } of store.chatsWithSchedules()) {
-        let changed = false;
-        const next = schedules.map((s) => {
-          if (s.next > now) return s;
-          fire(bot.api, chatId, s).catch((e) => console.warn('schedule fire failed:', e.message));
-          changed = true;
-          return { ...s, next: now + s.every * 1000 };
-        });
-        if (changed) store.setSchedules(chatId, next, defs());
+        for (const s of schedules) {
+          if (s.next <= now) await doFire(chatId, s); // sequential: no lost updates
+        }
       }
     } catch (e) { console.warn('scheduler tick:', e.message); }
   }, 30 * 1000).unref?.();
