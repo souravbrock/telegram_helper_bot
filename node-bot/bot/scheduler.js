@@ -12,6 +12,7 @@
 const { InlineKeyboard } = require('grammy');
 const store = require('../lib/store');
 const { captureContent } = require('./notes');
+const { sendContent } = require('../lib/render');
 
 const MIN_SEC = 60;
 const MAX_SEC = 30 * 86400;
@@ -114,6 +115,11 @@ function targetChat(ctx) {
 }
 
 async function fire(api, chatId, s) {
+  if (s.fileId) {
+    // Wizard schedules: media by file_id survives source deletion.
+    await sendContent(api, chatId, { kind: s.kind || 'photo', fileId: s.fileId, text: s.text || s.caption || '' }, {}, '');
+    return;
+  }
   const from = s.srcChat || chatId;
   if (s.srcMsg) {
     const extra = s.caption ? { caption: s.caption } : {};
@@ -124,6 +130,7 @@ async function fire(api, chatId, s) {
 }
 
 function describe(s) {
+  if (s.fileId) return `${s.kind || 'media'}${s.text ? ' + caption' : ''}`;
   if (s.srcMsg) return `media${s.caption ? ' (custom caption)' : ''}`;
   return (s.text || '').slice(0, 40);
 }
@@ -185,8 +192,8 @@ function register(bot) {
     const cfg = store.getChat(chatId, defs());
     if (!cfg.schedules.length) return ctx.reply('No schedules. Tap ➕ New guided in /menu → Schedules.');
     const lines = cfg.schedules.map((s) => {
-      const what = s.srcMsg ? `media #${s.srcMsg}` : (s.text || '').slice(0, 40);
-      return `<code>${s.id}</code> every ${fmtDur(s.every)} from ${fmtLocal(s.next, tzOffset(chatId))} — ${what}`;
+      const what = s.fileId ? `${s.kind || 'media'}` : s.srcMsg ? `media #${s.srcMsg}` : (s.text || '').slice(0, 40);
+      return `<code>${s.id}</code> every ${fmtDur(s.every)} — ${what}`;
     });
     return ctx.reply(`⏰ <b>Schedules</b> (group time UTC${fmtTz(tzOffset(chatId))})\n` + lines.join('\n'), { parse_mode: 'HTML' });
   }));
@@ -286,7 +293,7 @@ function register(bot) {
       if (data === 'sch:save') {
         const cfg = store.getChat(entry.chat, defs());
         if (cfg.schedules.length >= 20) { await answer('Max 20 schedules — remove one first.', true); return; }
-        const s = { id: Date.now().toString(36), every: entry.every, next: entry.next, srcChat: entry.srcChat, srcMsg: entry.srcMsg, caption: entry.caption, text: entry.text };
+        const s = { id: Date.now().toString(36), every: entry.every, next: entry.next, kind: entry.kind, fileId: entry.fileId, text: entry.text };
         store.setSchedules(entry.chat, [...cfg.schedules, s], defs());
         wiz.delete(k);
         try { await ctx.editMessageText(`✅ Scheduled <code>${s.id}</code>: ${describe(s)} every ${fmtDur(s.every)} from ${fmtLocal(s.next, tzOffset(entry.chat))}.`, { parse_mode: 'HTML' }); } catch {}
@@ -318,8 +325,8 @@ function register(bot) {
           return;
         }
         entry.content = c;
-        if (c.fileId) { entry.srcChat = ctx.chat.id; entry.srcMsg = ctx.msg.message_id; entry.caption = (c.text || '').slice(0, 1000) || undefined; entry.text = undefined; }
-        else { entry.text = (c.text || '').slice(0, 1000); entry.srcMsg = undefined; }
+        if (c.fileId) { entry.kind = c.kind; entry.fileId = c.fileId; entry.text = (c.text || '').slice(0, 1000) || undefined; }
+        else { entry.kind = 'text'; entry.fileId = undefined; entry.text = (c.text || '').slice(0, 1000); }
         entry.step = 'freq';
         await promptStep(ctx, entry, '⏱ <b>Step 2/4 — frequency.</b> Reply with the interval, e.g. <code>6h</code> (s/m/h/d, min 1m).', undefined);
         try { await ctx.deleteMessage(); } catch {}
@@ -357,7 +364,7 @@ function register(bot) {
         entry.next = nextTime;
         entry.step = 'review';
         const kb = new InlineKeyboard().text('✅ Save', 'sch:save').text('❌ Cancel', 'sch:cancel');
-        const s = { every: entry.every, next: entry.next, srcMsg: entry.srcMsg, caption: entry.caption, text: entry.text };
+        const s = { every: entry.every, next: entry.next, kind: entry.kind, fileId: entry.fileId, text: entry.text };
         await promptStep(ctx, entry, `📝 <b>Review</b>\n${describe(s)}\nEvery <b>${fmtDur(entry.every)}</b>, first run <b>${fmtLocal(entry.next, tz)}</b> (group time).\nSave?`, kb);
         try { await ctx.deleteMessage(); } catch {}
         return;
