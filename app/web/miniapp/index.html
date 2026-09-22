@@ -3,61 +3,134 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Group Assistant — Admin Dashboard (MVP)</title>
+<title>Group Helper — Admin Dashboard</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
-.card{border:1px solid #ddd;border-radius:12px;padding:12px;margin:12px 0}
-button{padding:8px 12px;border-radius:8px;border:1px solid #888;background:#f5f5f5;cursor:pointer}
-input,textarea{width:100%;padding:8px;margin:4px 0;border-radius:8px;border:1px solid #bbb}
-table{width:100%;border-collapse:collapse;font-size:13px}
-td,th{border-bottom:1px solid #eee;padding:6px;text-align:left}
+:root{color-scheme:light dark}
+body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:14px;max-width:720px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
+h2{margin:6px 0}h3{margin:0 0 8px}
+.card{border:1px solid var(--tg-theme-hint-color,#ddd);border-radius:14px;padding:12px;margin:12px 0;background:var(--tg-theme-secondary-bg-color,transparent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{padding:9px 14px;border-radius:10px;border:0;background:var(--tg-theme-button-color,#2481cc);color:var(--tg-theme-button-text-color,#fff);cursor:pointer;font-size:14px}
+button.ghost{background:transparent;color:var(--tg-theme-link-color,#2481cc);border:1px solid var(--tg-theme-link-color,#2481cc)}
+input,textarea,select{width:100%;box-sizing:border-box;padding:9px;margin:5px 0;border-radius:10px;border:1px solid var(--tg-theme-hint-color,#bbb);background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111);font-size:14px}
+label{font-size:13px;opacity:.85;display:block;margin-top:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.stat{border-radius:10px;padding:10px;background:var(--tg-theme-bg-color,#f4f4f5);text-align:center}
+.stat b{font-size:20px;display:block}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td,th{border-bottom:1px solid var(--tg-theme-hint-color,#eee);padding:6px 4px;text-align:left;vertical-align:top}
+.err{background:#fde8e8;color:#a00;border-radius:10px;padding:10px;margin:10px 0}
+.switch{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--tg-theme-hint-color,#eee)}
+.switch button{min-width:76px}
+.muted{opacity:.65;font-size:13px}
 </style>
 </head>
 <body>
-<h2>🛡 Group Assistant — MVP Dashboard</h2>
-<p>Open this page via the bot's Mini App button. API: <code>/api/stats</code> <code>/api/logs</code></p>
-<div class="card">
-<h3>Stats</h3>
-<button onclick="loadStats()">Reload stats</button>
-<pre id="stats">—</pre>
-</div>
-<div class="card">
-<h3>Recent moderation logs</h3>
-<button onclick="loadLogs()">Reload logs</button>
-<table><thead><tr><th>ts</th><th>chat</th><th>user</th><th>action</th><th>reason</th></tr></thead>
-<tbody id="logs"></tbody></table>
-</div>
-<div class="card">
-<h3>Chat settings</h3>
-<input id="chatId" placeholder="chat id e.g. -100123..." />
-<button onclick="loadSettings()">Load</button>
-<textarea id="welcome" rows="3" placeholder="welcome text"></textarea>
-<button onclick="saveSettings()">Save welcome</button>
-<pre id="settings">—</pre>
-</div>
+<h2>🛡 Group Helper</h2>
+<div id="who" class="muted">…</div>
+<div id="err"></div>
+
+<div class="card"><h3>📊 Stats</h3><div class="row"><button onclick="loadStats()">Reload</button></div><div id="stats" class="grid" style="margin-top:8px"></div></div>
+
+<div class="card"><h3>🧾 Recent logs</h3><div class="row"><button onclick="loadLogs()">Reload</button></div>
+<table><thead><tr><th>time</th><th>chat</th><th>user</th><th>action</th><th>reason</th></tr></thead><tbody id="logs"></tbody></table></div>
+
+<div class="card"><h3>⚙️ Group settings</h3>
+<label>Chat ID (group id, e.g. -100123…)</label>
+<div class="row"><input id="chatId" inputmode="numeric" placeholder="-100…" style="flex:1"/><button onclick="loadSettings()">Load</button></div>
+<div id="form" style="display:none">
+<label>Welcome text ({mention} {title} {name})</label><textarea id="f_welcome" rows="2"></textarea>
+<label>Rules text</label><textarea id="f_rules" rows="2"></textarea>
+<label>Warn limit</label><input id="f_warns" type="number" min="1" max="10"/>
+<label>Ban words (comma-separated)</label><input id="f_banwords"/>
+<label>Whitelisted domains (comma-separated)</label><input id="f_links"/>
+<label>Flood limit (messages/10s, empty = default, 0 = off)</label><input id="f_flood" placeholder="default"/>
+<label>Flood action</label><select id="f_floodmode"><option>warn</option><option>mute</option><option>kick</option><option>ban</option></select>
+<div id="toggles"></div>
+<div class="row" style="margin-top:10px"><button onclick="saveSettings()">💾 Save settings</button><span id="saved" class="muted"></span></div>
+</div></div>
+
 <script>
-async function j(u,o){const r=await fetch(u,o);return r.json();}
-async function loadStats(){document.getElementById('stats').textContent=JSON.stringify(await j('/api/stats'),null,2);}
-async function loadLogs(){
-  const d=await j('/api/logs?limit=30');
-  document.getElementById('logs').innerHTML=(d.items||[]).map(x=>
-    `<tr><td>${x.ts}</td><td>${x.chat_id}</td><td>${x.user_id}</td><td>${x.action}</td><td>${x.reason||''}</td></tr>`).join('');
+const tg = window.Telegram.WebApp;
+tg.ready(); tg.expand();
+// API root sits next to /miniapp (works at domain root and under /api base).
+const ROOT = location.pathname.replace(/\/miniapp\/?$/, '/') || '/';
+const api = (p) => ROOT.replace(/\/$/, '') + p;
+const INIT = tg.initData || '';
+const HEAD = { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': INIT };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function fail(e, what) { $('err').innerHTML = `<div class="err">⚠️ ${esc(what)}: ${esc(e.error || e.message || e)}</div>`; }
+async function j(u, o) {
+  const r = await fetch(u, o);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw d;
+  return d;
 }
-async function loadSettings(){
-  const id=document.getElementById('chatId').value.trim();
-  if(!id) return alert('enter chat id');
-  const s=await j('/api/settings/'+encodeURIComponent(id));
-  document.getElementById('settings').textContent=JSON.stringify(s,null,2);
-  document.getElementById('welcome').value=s.welcome_text||'';
+$('who').textContent = tg.initDataUnsafe?.user
+  ? `Signed in as @${tg.initDataUnsafe.user.username || tg.initDataUnsafe.user.first_name} (${tg.initDataUnsafe.user.id})`
+  : 'Not opened from Telegram — API calls will fail with 401.';
+
+async function loadStats() {
+  try {
+    const d = await j(api('/api/stats'), { headers: HEAD });
+    $('stats').innerHTML = `<div class="stat"><b>${d.total}</b>total</div>` +
+      Object.entries(d.counts).sort().map(([k, v]) => `<div class="stat"><b>${v}</b>${esc(k)}</div>`).join('');
+  } catch (e) { fail(e, 'stats'); }
 }
-async function saveSettings(){
-  const id=document.getElementById('chatId').value.trim();
-  const w=document.getElementById('welcome').value;
-  const s=await j('/api/settings/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({welcome_text:w})});
-  document.getElementById('settings').textContent=JSON.stringify(s,null,2);
+async function loadLogs() {
+  try {
+    const d = await j(api('/api/logs?limit=30'), { headers: HEAD });
+    $('logs').innerHTML = (d.items || []).map((x) => {
+      const t = new Date(x.ts > 1e12 ? x.ts : x.ts * 1000).toLocaleString();
+      return `<tr><td>${esc(t)}</td><td>${x.chat_id}</td><td>${x.user_id}</td><td>${esc(x.action)}</td><td>${esc(x.reason || '')}</td></tr>`;
+    }).join('');
+  } catch (e) { fail(e, 'logs'); }
 }
-Telegram.WebApp.ready();
+let TOGGLES = [['allow_links', 'Links master'], ['captcha_enabled', 'Captcha'], ['reports_enabled', 'Reports'], ['antiraid_enabled', 'AntiRaid']];
+async function loadSettings() {
+  const id = $('chatId').value.trim();
+  if (!id) return alert('Enter the group chat ID first (ask the bot /stats in the group? No — find it in the log table above).');
+  try {
+    const s = await j(api('/api/settings/' + encodeURIComponent(id)), { headers: HEAD });
+    $('form').style.display = 'block';
+    $('f_welcome').value = s.welcome_text || '';
+    $('f_rules').value = s.rules_text || '';
+    $('f_warns').value = s.warn_limit ?? 3;
+    $('f_banwords').value = s.blacklist_words || '';
+    $('f_links').value = s.whitelist_domains || '';
+    $('f_flood').value = s.flood_limit ?? '';
+    $('f_floodmode').value = s.flood_mode || 'warn';
+    $('toggles').innerHTML = TOGGLES.map(([k, label]) =>
+      `<div class="switch"><span>${label}</span><button data-k="${k}" data-v="${s[k] ? 0 : 1}">${s[k] ? 'ON' : 'OFF'}</button></div>`).join('');
+    $('toggles').querySelectorAll('button').forEach((b) => b.onclick = () => flipToggle(id, b.dataset.k, b.dataset.v === '1'));
+    $('saved').textContent = '';
+  } catch (e) { fail(e, 'settings'); }
+}
+async function flipToggle(id, k, v) {
+  try {
+    await j(api('/api/settings/' + encodeURIComponent(id)), { method: 'POST', headers: HEAD, body: JSON.stringify({ [k]: v }) });
+    loadSettings();
+  } catch (e) { fail(e, 'toggle'); }
+}
+async function saveSettings() {
+  const id = $('chatId').value.trim();
+  const floodRaw = $('f_flood').value.trim();
+  const body = {
+    welcome_text: $('f_welcome').value,
+    rules_text: $('f_rules').value,
+    warn_limit: Math.max(1, Math.min(10, +$('f_warns').value || 3)),
+    blacklist_words: $('f_banwords').value,
+    whitelist_domains: $('f_links').value,
+    flood_limit: floodRaw === '' ? null : Math.max(0, +floodRaw || 0),
+    flood_mode: $('f_floodmode').value,
+  };
+  try {
+    await j(api('/api/settings/' + encodeURIComponent(id)), { method: 'POST', headers: HEAD, body: JSON.stringify(body) });
+    $('saved').textContent = 'Saved ✓ ' + new Date().toLocaleTimeString();
+  } catch (e) { fail(e, 'save'); }
+}
 loadStats(); loadLogs();
 </script>
 </body>

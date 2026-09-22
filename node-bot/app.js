@@ -13,6 +13,7 @@ const express = require('express');
 const { Bot } = require('grammy');
 
 const store = require('./lib/store');
+const { validateInitData } = require('./lib/tgAuth');
 const moderation = require('./bot/moderation');
 const captcha = require('./bot/captcha');
 const admin = require('./bot/admin');
@@ -41,19 +42,57 @@ const core = express();
 core.use(express.json());
 
 core.get('/health', (_req, res) => res.json({ ok: true, env: process.env.ENV || 'production', base: BASE || '/' }));
-core.get('/api/logs', (req, res) => {
+
+/* WebApp auth: every /api route (except /health) requires Telegram initData.
+ * Logs/stats = bot admins (ADMIN_IDS). Settings = bot admin OR that group's
+ * admin (checked live via getChatMember). Fail closed when unconfigured. */
+function adminIdSet() {
+  return new Set((process.env.ADMIN_IDS || '').split(',').map((s) => s.trim()).filter(Boolean).map(Number));
+}
+
+function authUser(req) {
+  const initData = req.get('X-Telegram-Init-Data') || req.query.initData || '';
+  return validateInitData(initData, TOKEN);
+}
+
+async function requireGlobalAdmin(req, res) {
+  const u = authUser(req);
+  if (!u) { res.status(401).json({ error: 'open this page from Telegram (initData missing/invalid)' }); return null; }
+  if (!adminIdSet().has(u.id)) { res.status(403).json({ error: 'bot admins only' }); return null; }
+  return u;
+}
+
+async function requireChatAdmin(req, res) {
+  const u = authUser(req);
+  if (!u) { res.status(401).json({ error: 'open this page from Telegram (initData missing/invalid)' }); return null; }
+  if (adminIdSet().has(u.id)) return u;
+  const chatId = Number(req.params.chatId);
+  if (bot) {
+    try {
+      const m = await bot.api.getChatMember(chatId, u.id);
+      if (m.status === 'administrator' || m.status === 'creator') return u;
+    } catch { /* fall through to 403 */ }
+  }
+  res.status(403).json({ error: 'group admins only' });
+  return null;
+}
+
+core.get('/api/logs', async (req, res) => {
+  if (!(await requireGlobalAdmin(req, res))) return;
   const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
   res.json({ items: store.recentActions(limit) });
 });
-core.get('/api/stats', (req, res) => {
+core.get('/api/stats', async (req, res) => {
+  if (!(await requireGlobalAdmin(req, res))) return;
   const counts = store.actionCounts();
   res.json({ counts, total: Object.values(counts).reduce((a, b) => a + b, 0) });
 });
-core.get('/api/settings/:chatId', (req, res) => {
+core.get('/api/settings/:chatId', async (req, res) => {
+  if (!(await requireChatAdmin(req, res))) return;
   res.json(store.getChat(req.params.chatId, { warnLimit: 3, allowLinks: false }));
 });
-core.post('/api/settings/:chatId', (req, res) => {
-  // TODO: require Telegram WebApp initData auth + admin check before public use.
+core.post('/api/settings/:chatId', async (req, res) => {
+  if (!(await requireChatAdmin(req, res))) return;
   const patch = {};
   const b = req.body || {};
   if (typeof b.welcome_text === 'string') patch.welcome_text = b.welcome_text.slice(0, 1000);
@@ -62,6 +101,12 @@ core.post('/api/settings/:chatId', (req, res) => {
   if (typeof b.captcha_enabled === 'boolean') patch.captcha_enabled = b.captcha_enabled ? 1 : 0;
   if (typeof b.blacklist_words === 'string') patch.blacklist_words = b.blacklist_words.slice(0, 2000);
   if (typeof b.whitelist_domains === 'string') patch.whitelist_domains = b.whitelist_domains.slice(0, 2000);
+  if (typeof b.rules_text === 'string') patch.rules_text = b.rules_text.slice(0, 2000);
+  if (b.flood_limit === null || b.flood_limit === 0) patch.flood_limit = b.flood_limit;
+  else if (Number.isInteger(b.flood_limit)) patch.flood_limit = Math.max(2, Math.min(30, b.flood_limit));
+  if (['warn', 'mute', 'kick', 'ban'].includes(b.flood_mode)) patch.flood_mode = b.flood_mode;
+  if (typeof b.reports_enabled === 'boolean') patch.reports_enabled = b.reports_enabled ? 1 : 0;
+  if (typeof b.antiraid_enabled === 'boolean') patch.antiraid_enabled = b.antiraid_enabled ? 1 : 0;
   res.json(store.saveChat(req.params.chatId, patch, { warnLimit: 3, allowLinks: false }));
 });
 
